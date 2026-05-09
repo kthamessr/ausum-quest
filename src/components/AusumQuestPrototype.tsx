@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -141,27 +141,25 @@ export default function AusumQuestPrototype() {
   const [showParticles, setShowParticles] = useState(false);
   const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number }>>([]);
   const [unlockFlashWorldId, setUnlockFlashWorldId] = useState<number | null>(null);
-  const [activeModal, setActiveModal] = useState<
-    | null
-    | "reward"
-    | "rank"
-    | "worldCelebration"
-    | "finalScreen"
-  >(null);
+  const [activeModal, setActiveModal] = useState<null | "missionComplete" | "worldComplete" | "gameComplete">(null);
   const [modalData, setModalData] = useState<{
-    reward?: { energyEarned: number; xpEarned: number; skill: string; previousRank: string };
-    rank?: { newRank: string; rankUp: boolean; previousRank: string };
-    worldCelebration?: {
+    missionComplete?: {
+      energyEarned: number;
+      xpEarned: number;
+      skill: string;
+      currentRank: string;
+      rankUp: boolean;
+      newRank?: string;
+    };
+    worldComplete?: {
       worldId: number;
       title: string;
       energyEarned: number;
       xpEarned: number;
-      newRank: string;
-      rankUp: boolean;
+      currentRank: string;
       particles: Array<{ id: number; x: number; y: number; size: number; delay: number }>;
     };
   }>({});
-  const [pendingModalQueue, setPendingModalQueue] = useState<string[]>([]);
 
   const currentMission = missions[missionIndex];
   const currentWorldId = currentMission.worldId;
@@ -271,45 +269,35 @@ export default function AusumQuestPrototype() {
       const newRankAfterMission = getRankForXp(newXp);
       const rankUp = newRankAfterMission !== previousRank || completed.length === 0;
       
-      const queue: string[] = [];
-      
-      setModalData({
-        reward: {
-          energyEarned: currentMission.reward,
-          xpEarned: currentMission.xpReward,
-          skill: currentMission.skill,
-          previousRank,
-        },
-        rank: rankUp ? {
-          newRank: newRankAfterMission,
-          rankUp: newRankAfterMission !== previousRank,
-          previousRank,
-        } : undefined,
-      });
-      
-      if (rankUp) queue.push("rank");
-
       if (worldCompletedNow) {
+        // Show world completion first
         const particlesForCelebration = createCelebrationParticles();
-        const celebrationRankUp = newRankAfterMission !== previousRank;
-        setModalData((prev) => ({
-          ...prev,
-          worldCelebration: {
+        setModalData({
+          worldComplete: {
             worldId: currentMission.worldId,
             title: getWorldTitle(currentMission.worldId),
             energyEarned: currentMission.reward,
             xpEarned: currentMission.xpReward,
-            newRank: newRankAfterMission,
-            rankUp: celebrationRankUp,
+            currentRank: newRankAfterMission,
             particles: particlesForCelebration,
           },
-        }));
-        queue.push("worldCelebration");
+        });
+        setActiveModal("worldComplete");
         playCompletionSoundPlaceholder(getWorldTitle(currentMission.worldId));
+      } else {
+        // Show mission completion
+        setModalData({
+          missionComplete: {
+            energyEarned: currentMission.reward,
+            xpEarned: currentMission.xpReward,
+            skill: currentMission.skill,
+            currentRank: newRankAfterMission,
+            rankUp: rankUp,
+            newRank: rankUp ? newRankAfterMission : undefined,
+          },
+        });
+        setActiveModal("missionComplete");
       }
-      
-      setPendingModalQueue(queue);
-      setActiveModal("reward");
     } else {
       setStreak(0);
       setMessage(companionMessages.incorrect);
@@ -317,42 +305,30 @@ export default function AusumQuestPrototype() {
   }
 
   function closeCurrentModal() {
-    setActiveModal(null);
-    setModalData((prev) => {
-      const next = { ...prev };
-      if (activeModal === "reward") delete next.reward;
-      if (activeModal === "rank") delete next.rank;
-      if (activeModal === "worldCelebration") delete next.worldCelebration;
-      return next;
-    });
+    if (activeModal === "missionComplete") {
+      setActiveModal(null);
+      setModalData({});
+      nextMission();
+    } else if (activeModal === "worldComplete") {
+      setActiveModal(null);
+      setModalData({});
+      continueAdventureFromCelebration();
+    } else if (activeModal === "gameComplete") {
+      setActiveModal(null);
+      setModalData({});
+    }
   }
 
-  useEffect(() => {
-    if (activeModal !== null) return;
-    if (pendingModalQueue.length === 0) return;
-
-    const nextModal = pendingModalQueue[0];
-    const delay = nextModal === "rank" ? 250 : 0;
-
-    const timer = window.setTimeout(() => {
-      setActiveModal(nextModal as any);
-      setPendingModalQueue((prev) => prev.slice(1));
-    }, delay);
-
-    return () => window.clearTimeout(timer);
-  }, [activeModal, pendingModalQueue]);
-
   function continueAdventureFromCelebration() {
-    if (!modalData.worldCelebration) return;
+    if (!modalData.worldComplete) return;
 
-    const nextWorldId = getNextWorldId(modalData.worldCelebration.worldId);
-    closeCurrentModal();
     setSelected(null);
-    
+    const nextWorldId = getNextWorldId(modalData.worldComplete.worldId);
     const nextWorldStartMission = missions.find((mission) => mission.worldId === nextWorldId);
+    
     if (!nextWorldStartMission && nextWorldId === null) {
-      setActiveModal("finalScreen");
-      setMessage("Lumora has been restored.");
+      setActiveModal("gameComplete");
+      setMessage("Lumora has been completely restored!");
       return;
     }
 
@@ -365,6 +341,7 @@ export default function AusumQuestPrototype() {
 
   function nextMission() {
     setSelected(null);
+    setModalData({});
     if (missionIndex < missions.length - 1) {
       const nextIndex = missionIndex + 1;
       setMissionIndex(nextIndex);
@@ -389,7 +366,6 @@ export default function AusumQuestPrototype() {
     setUnlockFlashWorldId(null);
     setActiveModal(null);
     setModalData({});
-    setPendingModalQueue([]);
   }
 
   function worldStatusLabel(world: World) {
@@ -433,7 +409,7 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {activeModal === "worldCelebration" && modalData.worldCelebration && (
+        {activeModal === "worldComplete" && modalData.worldComplete && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
@@ -441,7 +417,7 @@ export default function AusumQuestPrototype() {
             exit={{ opacity: 0 }}
           >
             <div className="absolute inset-0 overflow-hidden pointer-events-none max-w-6xl mx-auto">
-              {modalData.worldCelebration!.particles.map((particle) => (
+              {modalData.worldComplete!.particles.map((particle) => (
                 <motion.div
                   key={particle.id}
                   className="absolute rounded-full bg-cyan-300/80 shadow-[0_0_18px_rgba(34,211,238,0.6)]"
@@ -473,7 +449,7 @@ export default function AusumQuestPrototype() {
 
                   <div className="grid gap-2">
                     <h2 className="text-3xl md:text-5xl font-black tracking-tight text-cyan-300">
-                      {modalData.worldCelebration!.title} Restored!
+                      {modalData.worldComplete!.title} Restored!
                     </h2>
                     <p className="text-slate-300 text-base md:text-lg">
                       The world has been stabilized. New paths are now available in Lumora.
@@ -483,23 +459,23 @@ export default function AusumQuestPrototype() {
                   <div className="grid sm:grid-cols-3 gap-3 text-left">
                     <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
                       <p className="text-slate-400 text-sm">XP Earned</p>
-                      <p className="text-2xl font-bold text-cyan-300">+{modalData.worldCelebration!.xpEarned}</p>
+                      <p className="text-2xl font-bold text-cyan-300">+{modalData.worldComplete!.xpEarned}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
                       <p className="text-slate-400 text-sm">Energy Earned</p>
-                      <p className="text-2xl font-bold text-yellow-300">+{modalData.worldCelebration!.energyEarned}</p>
+                      <p className="text-2xl font-bold text-yellow-300">+{modalData.worldComplete!.energyEarned}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
                       <p className="text-slate-400 text-sm">Rank</p>
                       <p className="text-2xl font-bold text-purple-300">
-                        {modalData.worldCelebration!.rankUp ? modalData.worldCelebration!.newRank : currentRank}
+                        {modalData.worldComplete!.currentRank}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap justify-center gap-3">
                     <Button
-                      onClick={continueAdventureFromCelebration}
+                      onClick={closeCurrentModal}
                       className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-cyan-500/40"
                     >
                       Continue Adventure
@@ -513,7 +489,7 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {activeModal === "finalScreen" && (
+        {activeModal === "gameComplete" && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
@@ -580,7 +556,7 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {activeModal === "reward" && modalData.reward && (
+        {activeModal === "missionComplete" && modalData.missionComplete && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
@@ -602,82 +578,26 @@ export default function AusumQuestPrototype() {
                     animate={{ scale: [1, 1.02, 1] }}
                     transition={{ duration: 1.4, repeat: Infinity }}
                   >
-                    Mission Reward
+                    Mission Complete
                   </motion.h3>
                   <div className="grid gap-3 text-slate-100 text-base md:text-lg leading-relaxed">
                     <p>
-                      Energy earned: <span className="font-bold text-yellow-300">+{modalData.reward.energyEarned}</span>
+                      Energy earned: <span className="font-bold text-yellow-300">+{modalData.missionComplete.energyEarned}</span>
                     </p>
                     <p>
-                      XP earned: <span className="font-bold text-cyan-300">+{modalData.reward.xpEarned}</span>
+                      XP earned: <span className="font-bold text-cyan-300">+{modalData.missionComplete.xpEarned}</span>
                     </p>
                     <p>
-                      Skill practiced: <span className="font-bold text-emerald-300">{modalData.reward.skill}</span>
+                      Skill practiced: <span className="font-bold text-emerald-300">{modalData.missionComplete.skill}</span>
+                    </p>
+                    <p>
+                      Rank: <span className="font-bold text-purple-300">{modalData.missionComplete.rankUp ? `${modalData.missionComplete.newRank} ⬆️` : modalData.missionComplete.currentRank}</span>
                     </p>
                   </div>
                   <div>
                     <Button
                       onClick={closeCurrentModal}
                       className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 shadow-lg shadow-cyan-500/40"
-                    >
-                      Continue
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {activeModal === "rank" && modalData.rank && (
-          <motion.div
-            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.1 }}
-          >
-            <motion.div
-              className="mx-auto"
-              style={{ width: "min(94vw, 520px)" }}
-              initial={{ scale: 0.88, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.88, opacity: 0, y: 20 }}
-            >
-              <Card className="bg-gradient-to-br from-purple-900/90 to-indigo-900/90 border-purple-600/50 rounded-3xl shadow-2xl overflow-hidden">
-                <CardContent className="p-8 md:p-10 grid gap-6 text-center">
-                  <motion.div
-                    className="w-20 h-20 mx-auto rounded-full bg-purple-400/15 border border-purple-300/60 flex items-center justify-center shadow-[0_0_28px_rgba(168,85,247,0.2)]"
-                    animate={{ boxShadow: ["0 0 0px rgba(168,85,247,0.1)", "0 0_20px rgba(168,85,247,0.35)", "0 0 0px rgba(168,85,247,0.1)"] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <Star className="w-10 h-10 text-purple-300" />
-                  </motion.div>
-
-                  <div className="grid gap-3">
-                    <h2 className="text-3xl md:text-4xl font-black tracking-tight text-purple-300">
-                      {modalData.rank.rankUp ? "Rank Up!" : "Current Rank"}
-                    </h2>
-                    <motion.p
-                      className="text-3xl md:text-4xl font-bold text-purple-200"
-                      animate={{ scale: [1, 1.08, 1] }}
-                      transition={{ duration: 0.6, repeat: 2 }}
-                    >
-                      {modalData.rank.newRank}
-                    </motion.p>
-                    <p className="text-slate-300 text-base mt-2">
-                      {modalData.rank.rankUp
-                        ? "You've earned a new rank! Keep up the excellent momentum."
-                        : "You're building your mastery of Lumora. Stay focused and keep going."}
-                    </p>
-                  </div>
-
-                  <div>
-                    <Button
-                      onClick={closeCurrentModal}
-                      className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold text-lg min-h-14 shadow-lg shadow-purple-500/40"
                     >
                       Continue
                     </Button>
@@ -954,7 +874,7 @@ export default function AusumQuestPrototype() {
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button
                       onClick={nextMission}
-                      disabled={activeModal !== null || pendingModalQueue.length > 0}
+                      disabled={activeModal !== null}
                       className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-cyan-500/50 disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       Next Mission
