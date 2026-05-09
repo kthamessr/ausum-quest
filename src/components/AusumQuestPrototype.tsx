@@ -304,21 +304,6 @@ export default function AusumQuestPrototype() {
     }
   }
 
-  function closeCurrentModal() {
-    if (activeModal === "missionComplete") {
-      setActiveModal(null);
-      setModalData({});
-      nextMission();
-    } else if (activeModal === "worldComplete") {
-      setActiveModal(null);
-      setModalData({});
-      continueAdventureFromCelebration();
-    } else if (activeModal === "gameComplete") {
-      setActiveModal(null);
-      setModalData({});
-    }
-  }
-
   function continueAdventureFromCelebration() {
     if (!modalData.worldComplete) return;
 
@@ -475,7 +460,11 @@ export default function AusumQuestPrototype() {
 
                   <div className="flex flex-wrap justify-center gap-3">
                     <Button
-                      onClick={closeCurrentModal}
+                      onClick={() => {
+                        setActiveModal(null);
+                        setModalData({});
+                        continueAdventureFromCelebration();
+                      }}
                       className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-cyan-500/40"
                     >
                       Continue Adventure
@@ -596,7 +585,11 @@ export default function AusumQuestPrototype() {
                   </div>
                   <div>
                     <Button
-                      onClick={closeCurrentModal}
+                      onClick={() => {
+                        setActiveModal(null);
+                        setModalData({});
+                        nextMission();
+                      }}
                       className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 shadow-lg shadow-cyan-500/40"
                     >
                       Continue
