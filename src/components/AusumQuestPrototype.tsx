@@ -36,7 +36,7 @@ type World = {
   description: string;
 };
 
-type ActiveModal = null | "missionComplete" | "worldComplete";
+type ActiveModal = null | "missionComplete" | "worldComplete" | "incorrectAdvance";
 
 type ModalData = {
   mission?: Mission;
@@ -46,9 +46,44 @@ type ModalData = {
   rankUp?: boolean;
   completedWorldId?: number;
   completedWorldTitle?: string;
+  incorrectAnswer?: string;
+  correctAnswer?: string;
 };
 
+type SoundType = "correct" | "incorrect" | "worldComplete" | "gameComplete" | "rankUp";
+
 const LEVEL_XP = 100;
+
+function playSound(enabled: boolean, type: SoundType) {
+  if (!enabled) return;
+
+  const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  const audioContext = new AudioContextClass();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  const soundMap: Record<SoundType, { frequency: number; duration: number; volume: number }> = {
+    correct: { frequency: 660, duration: 0.16, volume: 0.045 },
+    incorrect: { frequency: 220, duration: 0.14, volume: 0.035 },
+    worldComplete: { frequency: 784, duration: 0.28, volume: 0.05 },
+    gameComplete: { frequency: 880, duration: 0.35, volume: 0.05 },
+    rankUp: { frequency: 740, duration: 0.24, volume: 0.05 },
+  };
+
+  const sound = soundMap[type];
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(sound.frequency, audioContext.currentTime);
+  gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(sound.volume, audioContext.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + sound.duration);
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + sound.duration + 0.03);
+}
 
 const worlds: World[] = [
   {
@@ -302,10 +337,12 @@ export default function AusumQuestPrototype() {
   const [streak, setStreak] = useState(0);
   const [wrongChoice, setWrongChoice] = useState<string | null>(null);
   const [flashAnswerArea, setFlashAnswerArea] = useState(false);
-    const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+  const [wrongAttempts, setWrongAttempts] = useState(0);
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [showFinalRestoreScreen, setShowFinalRestoreScreen] = useState(false);
   const [modalData, setModalData] = useState<ModalData>({});
   const [selectedWorldId, setSelectedWorldId] = useState(1);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   const currentMission = getCurrentMission(completed);
   const activeWorldId = getActiveWorldId(completed);
@@ -368,6 +405,7 @@ export default function AusumQuestPrototype() {
       setLevel(newLevel);
       setStreak(newStreak);
       setPendingCompletedMission(currentMission);
+      setWrongAttempts(0);
       setWrongChoice(null);
       setFlashAnswerArea(false);
 
@@ -376,6 +414,7 @@ export default function AusumQuestPrototype() {
       if (newStreak === 3) successMessage = "Excellent streak. You are focused and steady.";
       if (newStreak >= 4) successMessage = "Legend streak. Your focus is outstanding.";
       setMessage(successMessage);
+      playSound(soundEnabled, previousRank !== newRank ? "rankUp" : "correct");
 
       setModalData({
         mission: currentMission,
@@ -391,9 +430,31 @@ export default function AusumQuestPrototype() {
       return;
     }
 
+    playSound(soundEnabled, "incorrect");
     setEnergy((prev) => Math.max(0, prev - 2));
     setWrongChoice(choice);
     setFlashAnswerArea(true);
+
+    const nextWrongAttempts = wrongAttempts + 1;
+    setWrongAttempts(nextWrongAttempts);
+
+    if (nextWrongAttempts >= 2) {
+      setStreak(0);
+      setMessage("That answer was not correct. Let's try the next mission.");
+      setWrongAttempts(0);
+      setModalData({
+        mission: currentMission,
+        energyEarned: 0,
+        xpEarned: 0,
+        rank: currentRank,
+        rankUp: false,
+        incorrectAnswer: choice,
+        correctAnswer: currentMission.answer,
+      });
+      setActiveModal("incorrectAdvance");
+
+      return;
+    }
 
     setTimeout(() => {
       setSelected(null);
@@ -417,6 +478,7 @@ export default function AusumQuestPrototype() {
     setPendingCompletedMission(null);
 
     if (completedWorldId) {
+      playSound(soundEnabled, "worldComplete");
       setActiveModal("worldComplete");
       return;
     }
@@ -431,6 +493,42 @@ export default function AusumQuestPrototype() {
     } else {
       setShowFinalRestoreScreen(true);
       setMessage("Quest complete.");
+    }
+  }
+
+  function continueIncorrectAdvance() {
+    if (!modalData.mission) return;
+
+    const newCompleted = [...new Set([...completed, modalData.mission.id])];
+    const completedWorldId = isWorldComplete(modalData.mission.worldId, newCompleted)
+      ? modalData.mission.worldId
+      : undefined;
+    const completedWorldTitle = completedWorldId ? getWorldTitle(completedWorldId) : undefined;
+
+    setSelected(null);
+    setWrongChoice(null);
+    setFlashAnswerArea(false);
+    setCompleted(newCompleted);
+    setPendingCompletedMission(null);
+    setWrongAttempts(0);
+    setStreak(0);
+
+    if (completedWorldId) {
+      setModalData({ completedWorldId, completedWorldTitle });
+      setActiveModal("worldComplete");
+      return;
+    }
+
+    setModalData({});
+    setActiveModal(null);
+
+    const nextMission = getCurrentMission(newCompleted);
+    if (nextMission) {
+      setSelectedWorldId(nextMission.worldId);
+      setMessage(`Adventure continues in ${getWorldTitle(nextMission.worldId)}.`);
+    } else {
+      setShowFinalRestoreScreen(true);
+      setMessage("Quest complete. The Ausum Realm has been restored.");
     }
   }
 
@@ -452,6 +550,7 @@ export default function AusumQuestPrototype() {
     }
 
     setShowFinalRestoreScreen(true);
+    playSound(soundEnabled, "gameComplete");
     setMessage("Quest complete. The Ausum Realm has been restored.");
   }
 
@@ -466,6 +565,7 @@ export default function AusumQuestPrototype() {
     setStreak(0);
     setWrongChoice(null);
     setFlashAnswerArea(false);
+    setWrongAttempts(0);
     setActiveModal(null);
     setModalData({});
     setShowFinalRestoreScreen(false);
@@ -541,6 +641,62 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {activeModal === "incorrectAdvance" && modalData.mission && (
+          <motion.div
+            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="mx-auto"
+              style={{ width: "min(94vw, 560px)" }}
+              initial={{ scale: 0.92, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 16 }}
+            >
+              <Card className="bg-gradient-to-br from-slate-900/95 to-slate-800/95 border-rose-700/40 rounded-2xl shadow-2xl">
+                <CardContent className="p-7 md:p-8 grid gap-5">
+                  <h3 className="text-2xl md:text-3xl font-bold text-rose-300">Not Quite</h3>
+
+                  <div className="grid gap-3 text-slate-100 text-base md:text-lg leading-relaxed">
+                    <p>
+                      That answer was incorrect. Let's try the next mission.
+                    </p>
+                    <p>
+                      Energy earned: <span className="font-bold text-yellow-300">+0</span>
+                    </p>
+                    <p>
+                      XP earned: <span className="font-bold text-cyan-300">+0</span>
+                    </p>
+                    <p>
+                      Current rank: <span className="font-bold text-purple-300">{modalData.rank}</span>
+                    </p>
+                    <p>
+                      Streak: <span className="font-bold text-rose-300">Reset</span>
+                    </p>
+                    <p>
+                      Skill practiced: <span className="font-bold text-emerald-300">{modalData.mission.skill}</span>
+                    </p>
+                    <p className="rounded-2xl bg-slate-950/70 border border-slate-700 p-4 text-slate-200">
+                      The correct answer was: <span className="font-bold text-cyan-300">{modalData.correctAnswer}</span>
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={continueIncorrectAdvance}
+                    className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 shadow-lg shadow-cyan-500/40"
+                  >
+                    Try Next Mission
+                  </Button>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {activeModal === "worldComplete" && modalData.completedWorldTitle && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
@@ -598,6 +754,16 @@ export default function AusumQuestPrototype() {
           <StatCard icon={<Star className="w-8 h-8 text-purple-300" />} label="Rank" value={currentRank} color="text-purple-300" />
           <StatCard icon={<Trophy className="w-8 h-8 text-cyan-300" />} label="XP" value={xp} color="text-cyan-300" />
           <StatCard icon={<Flame className="w-8 h-8 text-orange-400" />} label="Streak" value={streak} color="text-orange-300" />
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            onClick={() => setSoundEnabled((prev) => !prev)}
+            variant="outline"
+            className="rounded-2xl border-slate-500 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-400 font-bold"
+          >
+            Sound {soundEnabled ? "On" : "Off"}
+          </Button>
         </div>
 
         <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden">
