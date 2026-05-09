@@ -105,17 +105,125 @@ const missions: Mission[] = [
     xpReward: 45,
     skill: "Functional communication",
   },
+  {
+    id: 5,
+    worldId: 1,
+    title: "Pattern Bridge",
+    type: "Logic Mission",
+    prompt: "What comes next in this pattern? Red, Blue, Red, Blue, __",
+    choices: ["Red", "Blue", "Green", "Yellow"],
+    answer: "Red",
+    reward: 25,
+    xpReward: 40,
+    skill: "Pattern recognition",
+  },
+  {
+    id: 6,
+    worldId: 1,
+    title: "Energy Match",
+    type: "Math Mission",
+    prompt: "Which two numbers add up to 10?",
+    choices: ["5 + 3", "4 + 4", "6 + 5", "7 + 2"],
+    answer: "4 + 4",
+    reward: 20,
+    xpReward: 35,
+    skill: "Addition",
+  },
+  {
+    id: 7,
+    worldId: 1,
+    title: "Crystal Path",
+    type: "Logic Mission",
+    prompt: "If you follow the path: Start, Turn Left, Go Forward, Turn Right, Go Forward. Where are you?",
+    choices: ["Back where you started", "Somewhere new", "Lost", "Going backward"],
+    answer: "Somewhere new",
+    reward: 25,
+    xpReward: 40,
+    skill: "Spatial reasoning",
+  },
+  {
+    id: 8,
+    worldId: 2,
+    title: "Speak the Signal",
+    type: "Voice Mission",
+    prompt: "What is a clear way to ask someone a question?",
+    choices: ["Why don't you know?", "Can you help me understand this?", "You should know this.", "That makes no sense."],
+    answer: "Can you help me understand this?",
+    reward: 30,
+    xpReward: 45,
+    skill: "Clear communication",
+  },
+  {
+    id: 9,
+    worldId: 2,
+    title: "Decode the Message",
+    type: "Reading Mission",
+    prompt: "A sign says: 'Wet Paint.' What should you do?",
+    choices: ["Touch it to feel the paint", "Read the sign and do not touch it", "Paint it more", "Ignore it"],
+    answer: "Read the sign and do not touch it",
+    reward: 25,
+    xpReward: 40,
+    skill: "Reading comprehension",
+  },
+  {
+    id: 10,
+    worldId: 2,
+    title: "Help the Robot",
+    type: "Logic Mission",
+    prompt: "A robot is stuck. To help it, what should you do first?",
+    choices: ["Turn it off", "Listen to the beeping sound", "Leave it alone", "Hit it"],
+    answer: "Listen to the beeping sound",
+    reward: 30,
+    xpReward: 45,
+    skill: "Problem-solving",
+  },
+  {
+    id: 11,
+    worldId: 3,
+    title: "Memory Path",
+    type: "Reading Mission",
+    prompt: "You see three items: A key, A book, A light. Which was shown second?",
+    choices: ["A key", "A book", "A light", "None of them"],
+    answer: "A book",
+    reward: 30,
+    xpReward: 45,
+    skill: "Memory",
+  },
+  {
+    id: 12,
+    worldId: 3,
+    title: "Hidden Clue",
+    type: "Logic Mission",
+    prompt: "If the pattern is: 2, 4, 6, 8, 10, what number comes next?",
+    choices: ["11", "12", "14", "20"],
+    answer: "12",
+    reward: 25,
+    xpReward: 40,
+    skill: "Deduction",
+  },
+  {
+    id: 13,
+    worldId: 3,
+    title: "Logic Gate",
+    type: "Logic Mission",
+    prompt: "All trees have leaves. Oak is a tree. Does an oak tree have leaves?",
+    choices: ["No", "Yes", "Sometimes", "Maybe"],
+    answer: "Yes",
+    reward: 30,
+    xpReward: 45,
+    skill: "Logical reasoning",
+  },
 ];
 
 const companionMessages = {
-  start: "Welcome to AUSUM Quest. The world of Lumora needs your thinking power.",
+  start: "Welcome to AUSUM Quest. The world of The Ausum Realm needs your thinking power.",
   correct: "Excellent! You powered the quest and earned rewards.",
   incorrect: "Good try. Check the clue, slow down, and try again.",
   complete: "Mission chain complete. You restored the first zone!",
 };
 
 function getRankForXp(xp: number) {
-  if (xp >= 600) return "Lumora Legend";
+  if (xp >= 600) return "The Ausum Realm Legend";
   if (xp >= 400) return "Shadow Strategist";
   if (xp >= 250) return "Signal Champion";
   if (xp >= 150) return "Crystal Guardian";
@@ -141,6 +249,9 @@ export default function AusumQuestPrototype() {
   const [showParticles, setShowParticles] = useState(false);
   const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number }>>([]);
   const [unlockFlashWorldId, setUnlockFlashWorldId] = useState<number | null>(null);
+  const [, setConsecutiveWrongAnswers] = useState(0);
+  const [wrongChoice, setWrongChoice] = useState<string | null>(null);
+  const [flashAnswerArea, setFlashAnswerArea] = useState(false);
   const [activeModal, setActiveModal] = useState<null | "missionComplete" | "worldComplete" | "gameComplete">(null);
   const [modalData, setModalData] = useState<{
     missionComplete?: {
@@ -255,6 +366,9 @@ export default function AusumQuestPrototype() {
       setXp(newXp);
       setLevel(newLevel);
       setStreak(newStreak);
+      setConsecutiveWrongAnswers(0);
+      setWrongChoice(null);
+      setFlashAnswerArea(false);
       setCompleted((prev) => [...new Set([...prev, currentMission.id])]);
       generateParticles();
 
@@ -299,8 +413,27 @@ export default function AusumQuestPrototype() {
         setActiveModal("missionComplete");
       }
     } else {
-      setStreak(0);
-      setMessage(companionMessages.incorrect);
+      const energyPenalty = 2;
+      setEnergy((prev) => Math.max(0, prev - energyPenalty));
+      setWrongChoice(choice);
+      setFlashAnswerArea(true);
+
+      setTimeout(() => {
+        setSelected(null);
+        setWrongChoice(null);
+        setFlashAnswerArea(false);
+      }, 350);
+
+      setConsecutiveWrongAnswers((prev) => {
+        const updated = prev + 1;
+        if (updated >= 2) {
+          setStreak(0);
+          setMessage("You are still in this. Reset, refocus, and try again.");
+          return 0;
+        }
+        setMessage("Nice effort. Small energy dip only. Try again right away.");
+        return updated;
+      });
     }
   }
 
@@ -313,7 +446,7 @@ export default function AusumQuestPrototype() {
     
     if (!nextWorldStartMission && nextWorldId === null) {
       setActiveModal("gameComplete");
-      setMessage("Lumora has been completely restored!");
+      setMessage("The Ausum Realm has been completely restored!");
       return;
     }
 
@@ -326,6 +459,8 @@ export default function AusumQuestPrototype() {
 
   function nextMission() {
     setSelected(null);
+    setWrongChoice(null);
+    setFlashAnswerArea(false);
     setModalData({});
     if (missionIndex < missions.length - 1) {
       const nextIndex = missionIndex + 1;
@@ -347,6 +482,9 @@ export default function AusumQuestPrototype() {
     setSelected(null);
     setCompleted([]);
     setStreak(0);
+    setConsecutiveWrongAnswers(0);
+    setWrongChoice(null);
+    setFlashAnswerArea(false);
     setMessage(companionMessages.start);
     setUnlockFlashWorldId(null);
     setActiveModal(null);
@@ -437,7 +575,7 @@ export default function AusumQuestPrototype() {
                       {modalData.worldComplete!.title} Restored!
                     </h2>
                     <p className="text-slate-300 text-base md:text-lg">
-                      The world has been stabilized. New paths are now available in Lumora.
+                      The world has been stabilized. New paths are now available in The Ausum Realm.
                     </p>
                   </div>
 
@@ -503,7 +641,7 @@ export default function AusumQuestPrototype() {
 
                   <div className="grid gap-2">
                     <h2 className="text-3xl md:text-5xl font-black tracking-tight text-emerald-300">
-                      Lumora Has Been Restored
+                      The Ausum Realm Has Been Restored
                     </h2>
                     <p className="text-slate-300 text-base md:text-lg">
                       You completed every world and brought the quest to a close.
@@ -827,22 +965,37 @@ export default function AusumQuestPrototype() {
                   />
                 </motion.div>
 
-                <div className="rounded-2xl bg-slate-950/80 p-5 border border-slate-700/50">
+                <motion.div
+                  className="rounded-2xl bg-slate-950/80 p-5 border border-slate-700/50"
+                  animate={
+                    flashAnswerArea
+                      ? {
+                          borderColor: ["rgba(51,65,85,0.6)", "rgba(34,211,238,0.85)", "rgba(51,65,85,0.6)"],
+                          boxShadow: [
+                            "0 0 0px rgba(34,211,238,0)",
+                            "0 0 18px rgba(34,211,238,0.35)",
+                            "0 0 0px rgba(34,211,238,0)",
+                          ],
+                        }
+                      : { borderColor: "rgba(51,65,85,0.6)", boxShadow: "0 0 0px rgba(34,211,238,0)" }
+                  }
+                  transition={{ duration: 0.28 }}
+                >
                   <div className="flex items-start gap-3">
                     <Brain className="w-6 h-6 text-cyan-300 mt-1 flex-shrink-0" />
                     <p className="text-lg leading-relaxed text-white">{currentMission.prompt}</p>
                   </div>
-                </div>
+                </motion.div>
 
                 <div className="grid sm:grid-cols-2 gap-3">
                   {currentMission.choices.map((choice) => {
                     const isCorrect = selected !== null && choice === currentMission.answer;
-                    const isWrong = selected === choice && choice !== currentMission.answer;
+                    const isWrong = wrongChoice === choice;
                     return (
                       <motion.div key={choice} layout>
                         <Button
                           onClick={() => chooseAnswer(choice)}
-                          disabled={selected !== null}
+                          disabled={activeModal !== null}
                           className={`min-h-16 rounded-2xl text-lg font-semibold justify-start px-5 w-full transition-all ${
                             isCorrect
                               ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/50"
@@ -852,8 +1005,14 @@ export default function AusumQuestPrototype() {
                           }`}
                         >
                           <motion.div
-                            animate={isCorrect ? { scale: [1, 1.05, 1] } : isWrong ? { x: [-5, 5, -5, 0] } : {}}
-                            transition={{ duration: 0.3 }}
+                            animate={
+                              isCorrect
+                                ? { scale: [1, 1.05, 1] }
+                                : isWrong
+                                ? { x: [-4, 4, -3, 3, 0] }
+                                : {}
+                            }
+                            transition={{ duration: isWrong ? 0.26 : 0.3 }}
                           >
                             {choice}
                           </motion.div>
