@@ -302,8 +302,7 @@ export default function AusumQuestPrototype() {
   const [streak, setStreak] = useState(0);
   const [wrongChoice, setWrongChoice] = useState<string | null>(null);
   const [flashAnswerArea, setFlashAnswerArea] = useState(false);
-  const [consecutiveWrongAnswers, setConsecutiveWrongAnswers] = useState(0);
-  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+    const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [showFinalRestoreScreen, setShowFinalRestoreScreen] = useState(false);
   const [modalData, setModalData] = useState<ModalData>({});
   const [selectedWorldId, setSelectedWorldId] = useState(1);
@@ -369,7 +368,6 @@ export default function AusumQuestPrototype() {
       setLevel(newLevel);
       setStreak(newStreak);
       setPendingCompletedMission(currentMission);
-      setConsecutiveWrongAnswers(0);
       setWrongChoice(null);
       setFlashAnswerArea(false);
 
@@ -403,16 +401,7 @@ export default function AusumQuestPrototype() {
       setFlashAnswerArea(false);
     }, 350);
 
-    setConsecutiveWrongAnswers((prev) => {
-      const updated = prev + 1;
-      if (updated >= 2) {
-        setStreak(0);
-        setMessage("You are still in this. Reset, refocus, and try again.");
-        return 0;
-      }
-      setMessage("Nice effort. Small energy dip only. Try again right away.");
-      return updated;
-    });
+    setMessage("Nice effort. Small energy dip only. Try again right away.");
   }
 
   function continueMissionComplete() {
@@ -477,7 +466,6 @@ export default function AusumQuestPrototype() {
     setStreak(0);
     setWrongChoice(null);
     setFlashAnswerArea(false);
-    setConsecutiveWrongAnswers(0);
     setActiveModal(null);
     setModalData({});
     setShowFinalRestoreScreen(false);
