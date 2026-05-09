@@ -114,10 +114,13 @@ const companionMessages = {
   complete: "Mission chain complete. You restored the first zone!",
 };
 
-function getRankForEnergy(value: number) {
-  if (value >= 80) return "Crystal Guardian";
-  if (value >= 45) return "Quest Builder";
-  if (value >= 20) return "Path Finder";
+function getRankForXp(xp: number) {
+  if (xp >= 600) return "Lumora Legend";
+  if (xp >= 400) return "Shadow Strategist";
+  if (xp >= 250) return "Signal Champion";
+  if (xp >= 150) return "Crystal Guardian";
+  if (xp >= 100) return "Quest Builder";
+  if (xp >= 50) return "Path Finder";
   return "New Explorer";
 }
 
@@ -137,33 +140,28 @@ export default function AusumQuestPrototype() {
   const [streak, setStreak] = useState(0);
   const [showParticles, setShowParticles] = useState(false);
   const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number }>>([]);
-  const [rewardAcknowledged, setRewardAcknowledged] = useState(false);
   const [unlockFlashWorldId, setUnlockFlashWorldId] = useState<number | null>(null);
-  const [celebrationQueue, setCelebrationQueue] = useState<null | {
-    worldId: number;
-    title: string;
-    energyEarned: number;
-    xpEarned: number;
-    newRank: string;
-    rankUp: boolean;
-    particles: Array<{ id: number; x: number; y: number; size: number; delay: number }>;
-  }>(null);
-  const [worldCelebration, setWorldCelebration] = useState<null | {
-    worldId: number;
-    title: string;
-    energyEarned: number;
-    xpEarned: number;
-    newRank: string;
-    rankUp: boolean;
-    particles: Array<{ id: number; x: number; y: number; size: number; delay: number }>;
-  }>(null);
-  const [finalScreenOpen, setFinalScreenOpen] = useState(false);
-  const [rewardPopup, setRewardPopup] = useState({
-    open: false,
-    energyEarned: 0,
-    xpEarned: 0,
-    skill: "",
-  });
+  const [activeModal, setActiveModal] = useState<
+    | null
+    | "reward"
+    | "rank"
+    | "worldCelebration"
+    | "finalScreen"
+  >(null);
+  const [modalData, setModalData] = useState<{
+    reward?: { energyEarned: number; xpEarned: number; skill: string; previousRank: string };
+    rank?: { newRank: string; rankUp: boolean; previousRank: string };
+    worldCelebration?: {
+      worldId: number;
+      title: string;
+      energyEarned: number;
+      xpEarned: number;
+      newRank: string;
+      rankUp: boolean;
+      particles: Array<{ id: number; x: number; y: number; size: number; delay: number }>;
+    };
+  }>({});
+  const [pendingModalQueue, setPendingModalQueue] = useState<string[]>([]);
 
   const currentMission = missions[missionIndex];
   const currentWorldId = currentMission.worldId;
@@ -171,7 +169,7 @@ export default function AusumQuestPrototype() {
   const xpProgress = Math.round(((xp % LEVEL_XP) / LEVEL_XP) * 100);
   const xpFill = xp > 0 ? Math.max(6, xpProgress) : 0;
   const highestUnlockedMissionId = Math.min(missions.length, completed.length + 1);
-  const currentRank = useMemo(() => getRankForEnergy(energy), [energy]);
+  const currentRank = useMemo(() => getRankForXp(xp), [xp]);
 
   const rank = currentRank;
 
@@ -223,33 +221,6 @@ export default function AusumQuestPrototype() {
     }));
   }
 
-  function playCompletionSoundPlaceholder(worldTitle: string) {
-    console.log(`[AUSUM Quest] completion sound placeholder: ${worldTitle}`);
-  }
-
-  function queueWorldCelebration(worldId: number, energyEarned: number, xpEarned: number, newEnergy: number) {
-    const title = getWorldTitle(worldId);
-    const nextRank = getRankForEnergy(newEnergy);
-    const particlesForCelebration = createCelebrationParticles();
-    const rankUp = nextRank !== currentRank;
-
-    playCompletionSoundPlaceholder(title);
-    setCelebrationQueue({
-      worldId,
-      title,
-      energyEarned,
-      xpEarned,
-      newRank: nextRank,
-      rankUp,
-      particles: particlesForCelebration,
-    });
-  }
-
-  function getNextWorldId(worldId: number) {
-    const currentIndex = worlds.findIndex((world) => world.id === worldId);
-    return worlds[currentIndex + 1]?.id ?? null;
-  }
-
   function generateParticles() {
     const newParticles = Array.from({ length: 8 }, () => ({
       id: Math.random(),
@@ -259,6 +230,15 @@ export default function AusumQuestPrototype() {
     setParticles(newParticles);
     setShowParticles(true);
     setTimeout(() => setShowParticles(false), 650);
+  }
+
+  function getNextWorldId(worldId: number) {
+    const currentIndex = worlds.findIndex((world) => world.id === worldId);
+    return worlds[currentIndex + 1]?.id ?? null;
+  }
+
+  function playCompletionSoundPlaceholder(worldTitle: string) {
+    console.log(`[AUSUM Quest] completion sound placeholder: ${worldTitle}`);
   }
 
   function chooseAnswer(choice: string) {
@@ -286,66 +266,105 @@ export default function AusumQuestPrototype() {
       if (newStreak >= 4) successMessage = "Legend streak. Your focus is outstanding.";
 
       setMessage(successMessage);
-      setRewardAcknowledged(false);
-      setRewardPopup({
-        open: true,
-        energyEarned: currentMission.reward,
-        xpEarned: currentMission.xpReward,
-        skill: currentMission.skill,
+      
+      const previousRank = getRankForXp(xp);
+      const newRankAfterMission = getRankForXp(newXp);
+      const rankUp = newRankAfterMission !== previousRank || completed.length === 0;
+      
+      const queue: string[] = [];
+      
+      setModalData({
+        reward: {
+          energyEarned: currentMission.reward,
+          xpEarned: currentMission.xpReward,
+          skill: currentMission.skill,
+          previousRank,
+        },
+        rank: rankUp ? {
+          newRank: newRankAfterMission,
+          rankUp: newRankAfterMission !== previousRank,
+          previousRank,
+        } : undefined,
       });
+      
+      if (rankUp) queue.push("rank");
 
       if (worldCompletedNow) {
-        queueWorldCelebration(currentMission.worldId, currentMission.reward, currentMission.xpReward, newEnergy);
+        const particlesForCelebration = createCelebrationParticles();
+        const celebrationRankUp = newRankAfterMission !== previousRank;
+        setModalData((prev) => ({
+          ...prev,
+          worldCelebration: {
+            worldId: currentMission.worldId,
+            title: getWorldTitle(currentMission.worldId),
+            energyEarned: currentMission.reward,
+            xpEarned: currentMission.xpReward,
+            newRank: newRankAfterMission,
+            rankUp: celebrationRankUp,
+            particles: particlesForCelebration,
+          },
+        }));
+        queue.push("worldCelebration");
+        playCompletionSoundPlaceholder(getWorldTitle(currentMission.worldId));
       }
+      
+      setPendingModalQueue(queue);
+      setActiveModal("reward");
     } else {
       setStreak(0);
       setMessage(companionMessages.incorrect);
     }
   }
 
-  function closeRewardPopup() {
-    setRewardAcknowledged(true);
-    setRewardPopup((prev) => ({ ...prev, open: false }));
+  function closeCurrentModal() {
+    setActiveModal(null);
+    setModalData((prev) => {
+      const next = { ...prev };
+      if (activeModal === "reward") delete next.reward;
+      if (activeModal === "rank") delete next.rank;
+      if (activeModal === "worldCelebration") delete next.worldCelebration;
+      return next;
+    });
   }
 
   useEffect(() => {
-    if (rewardPopup.open || !celebrationQueue || worldCelebration || finalScreenOpen) return;
+    if (activeModal !== null) return;
+    if (pendingModalQueue.length === 0) return;
 
-    setWorldCelebration(celebrationQueue);
-    setCelebrationQueue(null);
+    const nextModal = pendingModalQueue[0];
+    const delay = nextModal === "rank" ? 250 : 0;
 
-    const nextWorldId = getNextWorldId(celebrationQueue.worldId);
-    if (nextWorldId !== null) {
-      setUnlockFlashWorldId(nextWorldId);
-      window.setTimeout(() => setUnlockFlashWorldId(null), 1800);
-    }
-  }, [celebrationQueue, finalScreenOpen, rewardPopup.open, worldCelebration]);
+    const timer = window.setTimeout(() => {
+      setActiveModal(nextModal as any);
+      setPendingModalQueue((prev) => prev.slice(1));
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [activeModal, pendingModalQueue]);
 
   function continueAdventureFromCelebration() {
-    if (!worldCelebration) return;
+    if (!modalData.worldCelebration) return;
 
-    const nextWorldId = getNextWorldId(worldCelebration.worldId);
-    setWorldCelebration(null);
-    setRewardAcknowledged(false);
+    const nextWorldId = getNextWorldId(modalData.worldCelebration.worldId);
+    closeCurrentModal();
     setSelected(null);
-
-    if (nextWorldId === null) {
-      setFinalScreenOpen(true);
+    
+    const nextWorldStartMission = missions.find((mission) => mission.worldId === nextWorldId);
+    if (!nextWorldStartMission && nextWorldId === null) {
+      setActiveModal("finalScreen");
       setMessage("Lumora has been restored.");
       return;
     }
 
-    const nextWorldStartMission = missions.find((mission) => mission.worldId === nextWorldId);
     if (nextWorldStartMission) {
       setMissionIndex(missions.findIndex((mission) => mission.id === nextWorldStartMission.id));
-      setSelectedWorldId(nextWorldId);
-      setMessage(`Adventure continues in ${getWorldTitle(nextWorldId)}.`);
+      setSelectedWorldId(nextWorldId!);
+      setMessage(`Adventure continues in ${getWorldTitle(nextWorldId!)}.`);
     }
   }
 
   function nextMission() {
     setSelected(null);
-    setRewardAcknowledged(false);
     if (missionIndex < missions.length - 1) {
       const nextIndex = missionIndex + 1;
       setMissionIndex(nextIndex);
@@ -367,12 +386,10 @@ export default function AusumQuestPrototype() {
     setCompleted([]);
     setStreak(0);
     setMessage(companionMessages.start);
-    setRewardAcknowledged(false);
     setUnlockFlashWorldId(null);
-    setCelebrationQueue(null);
-    setWorldCelebration(null);
-    setFinalScreenOpen(false);
-    setRewardPopup({ open: false, energyEarned: 0, xpEarned: 0, skill: "" });
+    setActiveModal(null);
+    setModalData({});
+    setPendingModalQueue([]);
   }
 
   function worldStatusLabel(world: World) {
@@ -416,15 +433,15 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {worldCelebration && (
+        {activeModal === "worldCelebration" && modalData.worldCelebration && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {worldCelebration.particles.map((particle) => (
+            <div className="absolute inset-0 overflow-hidden pointer-events-none max-w-6xl mx-auto">
+              {modalData.worldCelebration!.particles.map((particle) => (
                 <motion.div
                   key={particle.id}
                   className="absolute rounded-full bg-cyan-300/80 shadow-[0_0_18px_rgba(34,211,238,0.6)]"
@@ -437,7 +454,8 @@ export default function AusumQuestPrototype() {
             </div>
 
             <motion.div
-              className="relative mx-auto w-full max-w-3xl"
+              className="relative mx-auto w-full"
+              style={{ maxWidth: "min(94vw, 600px)" }}
               initial={{ scale: 0.9, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 16 }}
@@ -455,7 +473,7 @@ export default function AusumQuestPrototype() {
 
                   <div className="grid gap-2">
                     <h2 className="text-3xl md:text-5xl font-black tracking-tight text-cyan-300">
-                      {worldCelebration.title} Restored!
+                      {modalData.worldCelebration!.title} Restored!
                     </h2>
                     <p className="text-slate-300 text-base md:text-lg">
                       The world has been stabilized. New paths are now available in Lumora.
@@ -465,16 +483,16 @@ export default function AusumQuestPrototype() {
                   <div className="grid sm:grid-cols-3 gap-3 text-left">
                     <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
                       <p className="text-slate-400 text-sm">XP Earned</p>
-                      <p className="text-2xl font-bold text-cyan-300">+{worldCelebration.xpEarned}</p>
+                      <p className="text-2xl font-bold text-cyan-300">+{modalData.worldCelebration!.xpEarned}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
                       <p className="text-slate-400 text-sm">Energy Earned</p>
-                      <p className="text-2xl font-bold text-yellow-300">+{worldCelebration.energyEarned}</p>
+                      <p className="text-2xl font-bold text-yellow-300">+{modalData.worldCelebration!.energyEarned}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
                       <p className="text-slate-400 text-sm">Rank</p>
                       <p className="text-2xl font-bold text-purple-300">
-                        {worldCelebration.rankUp ? worldCelebration.newRank : currentRank}
+                        {modalData.worldCelebration!.rankUp ? modalData.worldCelebration!.newRank : currentRank}
                       </p>
                     </div>
                   </div>
@@ -495,7 +513,7 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {finalScreenOpen && (
+        {activeModal === "finalScreen" && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
@@ -562,7 +580,7 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {rewardPopup.open && (
+        {activeModal === "reward" && modalData.reward && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
@@ -588,19 +606,78 @@ export default function AusumQuestPrototype() {
                   </motion.h3>
                   <div className="grid gap-3 text-slate-100 text-base md:text-lg leading-relaxed">
                     <p>
-                      Energy earned: <span className="font-bold text-yellow-300">+{rewardPopup.energyEarned}</span>
+                      Energy earned: <span className="font-bold text-yellow-300">+{modalData.reward.energyEarned}</span>
                     </p>
                     <p>
-                      XP earned: <span className="font-bold text-cyan-300">+{rewardPopup.xpEarned}</span>
+                      XP earned: <span className="font-bold text-cyan-300">+{modalData.reward.xpEarned}</span>
                     </p>
                     <p>
-                      Skill practiced: <span className="font-bold text-emerald-300">{rewardPopup.skill}</span>
+                      Skill practiced: <span className="font-bold text-emerald-300">{modalData.reward.skill}</span>
                     </p>
                   </div>
                   <div>
                     <Button
-                      onClick={closeRewardPopup}
+                      onClick={closeCurrentModal}
                       className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 shadow-lg shadow-cyan-500/40"
+                    >
+                      Continue
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeModal === "rank" && modalData.rank && (
+          <motion.div
+            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
+          >
+            <motion.div
+              className="mx-auto"
+              style={{ width: "min(94vw, 520px)" }}
+              initial={{ scale: 0.88, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.88, opacity: 0, y: 20 }}
+            >
+              <Card className="bg-gradient-to-br from-purple-900/90 to-indigo-900/90 border-purple-600/50 rounded-3xl shadow-2xl overflow-hidden">
+                <CardContent className="p-8 md:p-10 grid gap-6 text-center">
+                  <motion.div
+                    className="w-20 h-20 mx-auto rounded-full bg-purple-400/15 border border-purple-300/60 flex items-center justify-center shadow-[0_0_28px_rgba(168,85,247,0.2)]"
+                    animate={{ boxShadow: ["0 0 0px rgba(168,85,247,0.1)", "0 0_20px rgba(168,85,247,0.35)", "0 0 0px rgba(168,85,247,0.1)"] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Star className="w-10 h-10 text-purple-300" />
+                  </motion.div>
+
+                  <div className="grid gap-3">
+                    <h2 className="text-3xl md:text-4xl font-black tracking-tight text-purple-300">
+                      {modalData.rank.rankUp ? "Rank Up!" : "Current Rank"}
+                    </h2>
+                    <motion.p
+                      className="text-3xl md:text-4xl font-bold text-purple-200"
+                      animate={{ scale: [1, 1.08, 1] }}
+                      transition={{ duration: 0.6, repeat: 2 }}
+                    >
+                      {modalData.rank.newRank}
+                    </motion.p>
+                    <p className="text-slate-300 text-base mt-2">
+                      {modalData.rank.rankUp
+                        ? "You've earned a new rank! Keep up the excellent momentum."
+                        : "You're building your mastery of Lumora. Stay focused and keep going."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <Button
+                      onClick={closeCurrentModal}
+                      className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold text-lg min-h-14 shadow-lg shadow-purple-500/40"
                     >
                       Continue
                     </Button>
@@ -877,7 +954,7 @@ export default function AusumQuestPrototype() {
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button
                       onClick={nextMission}
-                      disabled={!rewardAcknowledged}
+                      disabled={activeModal !== null || pendingModalQueue.length > 0}
                       className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-cyan-500/50 disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       Next Mission
