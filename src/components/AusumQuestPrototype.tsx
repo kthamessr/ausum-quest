@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,6 +27,7 @@ type Mission = {
   reward: number;
   xpReward: number;
   skill: string;
+  explanation: string;
 };
 
 type World = {
@@ -35,13 +36,25 @@ type World = {
   description: string;
 };
 
+type ActiveModal = null | "missionComplete" | "worldComplete";
+
+type ModalData = {
+  mission?: Mission;
+  energyEarned?: number;
+  xpEarned?: number;
+  rank?: string;
+  rankUp?: boolean;
+  completedWorldId?: number;
+  completedWorldTitle?: string;
+};
+
 const LEVEL_XP = 100;
 
 const worlds: World[] = [
   {
     id: 1,
     title: "Crystal Valley",
-    description: "Warm up logic and pattern skills to power the valley gates.",
+    description: "Warm up logic, patterns, and energy skills to power the valley gates.",
   },
   {
     id: 2,
@@ -51,7 +64,7 @@ const worlds: World[] = [
   {
     id: 3,
     title: "Shadow Forest",
-    description: "Use focus and confidence to complete final support missions.",
+    description: "Use focus, memory, and deduction to complete final support missions.",
   },
 ];
 
@@ -67,23 +80,11 @@ const missions: Mission[] = [
     reward: 20,
     xpReward: 35,
     skill: "Pattern recognition",
+    explanation: "The pattern counts by 2, so the next number is 10.",
   },
   {
     id: 2,
     worldId: 1,
-    title: "Decode the Signal",
-    type: "Reading Mission",
-    prompt:
-      "Choose the word that best completes the sentence: The explorer was brave because he kept going even when he felt __.",
-    choices: ["hungry", "afraid", "sleepy", "quiet"],
-    answer: "afraid",
-    reward: 25,
-    xpReward: 40,
-    skill: "Inference",
-  },
-  {
-    id: 3,
-    worldId: 2,
     title: "Charge the Crystal",
     type: "Math Mission",
     prompt: "The crystal needs 12 energy points. You already have 7. How many more do you need?",
@@ -92,21 +93,10 @@ const missions: Mission[] = [
     reward: 20,
     xpReward: 35,
     skill: "Subtraction",
+    explanation: "12 - 7 = 5.",
   },
   {
-    id: 4,
-    worldId: 3,
-    title: "Speak the Command",
-    type: "Voice Mission",
-    prompt: "Say or choose the command that would help a teammate: 'I need help, please.'",
-    choices: ["Go away", "I need help, please", "That is mine", "Stop talking"],
-    answer: "I need help, please",
-    reward: 30,
-    xpReward: 45,
-    skill: "Functional communication",
-  },
-  {
-    id: 5,
+    id: 3,
     worldId: 1,
     title: "Pattern Bridge",
     type: "Logic Mission",
@@ -116,30 +106,59 @@ const missions: Mission[] = [
     reward: 25,
     xpReward: 40,
     skill: "Pattern recognition",
+    explanation: "The pattern repeats Red, Blue, so the next color is Red.",
   },
   {
-    id: 6,
+    id: 4,
     worldId: 1,
     title: "Energy Match",
     type: "Math Mission",
     prompt: "Which two numbers add up to 10?",
-    choices: ["5 + 3", "4 + 4", "6 + 5", "7 + 2"],
-    answer: "4 + 4",
+    choices: ["5 + 5", "4 + 4", "6 + 5", "7 + 2"],
+    answer: "5 + 5",
     reward: 20,
     xpReward: 35,
     skill: "Addition",
+    explanation: "5 + 5 = 10. The other choices equal 8, 11, and 9.",
   },
   {
-    id: 7,
+    id: 5,
     worldId: 1,
     title: "Crystal Path",
     type: "Logic Mission",
-    prompt: "If you follow the path: Start, Turn Left, Go Forward, Turn Right, Go Forward. Where are you?",
-    choices: ["Back where you started", "Somewhere new", "Lost", "Going backward"],
-    answer: "Somewhere new",
+    prompt: "If you follow a new path through the valley, what are you most likely doing?",
+    choices: ["Sleeping", "Going backward", "Stopping", "Exploring"],
+    answer: "Exploring",
     reward: 25,
     xpReward: 40,
-    skill: "Spatial reasoning",
+    skill: "Reasoning",
+    explanation: "Following a new path means you are exploring.",
+  },
+  {
+    id: 6,
+    worldId: 2,
+    title: "Speak the Command",
+    type: "Voice Mission",
+    prompt: "Say or choose the command that would help a teammate: 'I need help, please.'",
+    choices: ["Go away", "I need help, please", "That is mine", "Stop talking"],
+    answer: "I need help, please",
+    reward: 30,
+    xpReward: 45,
+    skill: "Functional communication",
+    explanation: "Asking for help clearly and politely supports communication.",
+  },
+  {
+    id: 7,
+    worldId: 2,
+    title: "Decode the Signal",
+    type: "Reading Mission",
+    prompt: "Choose the word that best completes the sentence: The explorer was brave because he kept going even when he felt __.",
+    choices: ["hungry", "sleepy", "quiet", "afraid"],
+    answer: "afraid",
+    reward: 25,
+    xpReward: 40,
+    skill: "Inference",
+    explanation: "Bravery means continuing even when afraid.",
   },
   {
     id: 8,
@@ -147,11 +166,17 @@ const missions: Mission[] = [
     title: "Speak the Signal",
     type: "Voice Mission",
     prompt: "What is a clear way to ask someone a question?",
-    choices: ["Why don't you know?", "Can you help me understand this?", "You should know this.", "That makes no sense."],
+    choices: [
+      "Why don't you know?",
+      "You should know this.",
+      "Can you help me understand this?",
+      "That makes no sense.",
+    ],
     answer: "Can you help me understand this?",
     reward: 30,
     xpReward: 45,
     skill: "Clear communication",
+    explanation: "This response asks for help respectfully and clearly.",
   },
   {
     id: 9,
@@ -159,67 +184,71 @@ const missions: Mission[] = [
     title: "Decode the Message",
     type: "Reading Mission",
     prompt: "A sign says: 'Wet Paint.' What should you do?",
-    choices: ["Touch it to feel the paint", "Read the sign and do not touch it", "Paint it more", "Ignore it"],
+    choices: ["Touch it to feel the paint", "Paint it more", "Ignore it", "Read the sign and do not touch it"],
     answer: "Read the sign and do not touch it",
     reward: 25,
     xpReward: 40,
     skill: "Reading comprehension",
+    explanation: "The sign gives information that helps you make a safe choice.",
   },
   {
     id: 10,
-    worldId: 2,
-    title: "Help the Robot",
-    type: "Logic Mission",
-    prompt: "A robot is stuck. To help it, what should you do first?",
-    choices: ["Turn it off", "Listen to the beeping sound", "Leave it alone", "Hit it"],
-    answer: "Listen to the beeping sound",
-    reward: 30,
-    xpReward: 45,
-    skill: "Problem-solving",
-  },
-  {
-    id: 11,
     worldId: 3,
     title: "Memory Path",
-    type: "Reading Mission",
-    prompt: "You see three items: A key, A book, A light. Which was shown second?",
-    choices: ["A key", "A book", "A light", "None of them"],
+    type: "Memory Mission",
+    prompt: "You see three items: a key, a book, and a light. Which item was shown second?",
+    choices: ["A book", "A key", "A light", "None of them"],
     answer: "A book",
     reward: 30,
     xpReward: 45,
     skill: "Memory",
+    explanation: "The order was key, book, light. The book was second.",
   },
   {
-    id: 12,
+    id: 11,
     worldId: 3,
     title: "Hidden Clue",
     type: "Logic Mission",
     prompt: "If the pattern is: 2, 4, 6, 8, 10, what number comes next?",
-    choices: ["11", "12", "14", "20"],
+    choices: ["11", "14", "12", "20"],
     answer: "12",
     reward: 25,
     xpReward: 40,
     skill: "Deduction",
+    explanation: "The pattern counts by 2, so the next number is 12.",
+  },
+  {
+    id: 12,
+    worldId: 3,
+    title: "Logic Gate",
+    type: "Logic Mission",
+    prompt: "All oak trees are trees. Most trees have leaves. What is the best answer?",
+    choices: ["Oak trees are robots", "Oak trees usually have leaves", "Oak trees are not trees", "Oak trees are signs"],
+    answer: "Oak trees usually have leaves",
+    reward: 30,
+    xpReward: 45,
+    skill: "Logical reasoning",
+    explanation: "Oak trees are trees, and trees usually have leaves.",
   },
   {
     id: 13,
     worldId: 3,
-    title: "Logic Gate",
-    type: "Logic Mission",
-    prompt: "All trees have leaves. Oak is a tree. Does an oak tree have leaves?",
-    choices: ["No", "Yes", "Sometimes", "Maybe"],
-    answer: "Yes",
-    reward: 30,
-    xpReward: 45,
-    skill: "Logical reasoning",
+    title: "Final Focus Gate",
+    type: "Strategy Mission",
+    prompt: "You are stuck on a hard challenge. What is the best next step?",
+    choices: ["Quit forever", "Guess fast", "Delete the game", "Pause, breathe, and try a strategy"],
+    answer: "Pause, breathe, and try a strategy",
+    reward: 35,
+    xpReward: 50,
+    skill: "Self-management",
+    explanation: "Pausing and using a strategy helps you stay focused and keep going.",
   },
 ];
 
 const companionMessages = {
-  start: "Welcome to AUSUM Quest. The world of The Ausum Realm needs your thinking power.",
+  start: "Welcome to AUSUM Quest. The Ausum Realm needs your thinking power.",
   correct: "Excellent! You powered the quest and earned rewards.",
   incorrect: "Good try. Check the clue, slow down, and try again.",
-  complete: "Mission chain complete. You restored the first zone!",
 };
 
 function getRankForXp(xp: number) {
@@ -236,83 +265,83 @@ function getWorldTitle(worldId: number) {
   return worlds.find((world) => world.id === worldId)?.title ?? "";
 }
 
+function getWorldMissions(worldId: number) {
+  return missions.filter((mission) => mission.worldId === worldId);
+}
+
+function isWorldComplete(worldId: number, completedIds: number[]) {
+  return getWorldMissions(worldId).every((mission) => completedIds.includes(mission.id));
+}
+
+function getActiveWorldId(completedIds: number[]) {
+  if (!isWorldComplete(1, completedIds)) return 1;
+  if (!isWorldComplete(2, completedIds)) return 2;
+  if (!isWorldComplete(3, completedIds)) return 3;
+  return null;
+}
+
+function getCurrentMission(completedIds: number[]) {
+  const activeWorldId = getActiveWorldId(completedIds);
+  if (activeWorldId === null) return null;
+
+  return (
+    missions.find(
+      (mission) => mission.worldId === activeWorldId && !completedIds.includes(mission.id)
+    ) ?? null
+  );
+}
+
 export default function AusumQuestPrototype() {
-  const [missionIndex, setMissionIndex] = useState(0);
-  const [selectedWorldId, setSelectedWorldId] = useState(worlds[0].id);
   const [energy, setEnergy] = useState(0);
   const [xp, setXp] = useState(0);
   const [level, setLevel] = useState(1);
   const [message, setMessage] = useState(companionMessages.start);
   const [selected, setSelected] = useState<string | null>(null);
   const [completed, setCompleted] = useState<number[]>([]);
+  const [pendingCompletedMission, setPendingCompletedMission] = useState<Mission | null>(null);
   const [streak, setStreak] = useState(0);
-  const [showParticles, setShowParticles] = useState(false);
-  const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number }>>([]);
-  const [unlockFlashWorldId, setUnlockFlashWorldId] = useState<number | null>(null);
-  const [, setConsecutiveWrongAnswers] = useState(0);
   const [wrongChoice, setWrongChoice] = useState<string | null>(null);
   const [flashAnswerArea, setFlashAnswerArea] = useState(false);
-  const [activeModal, setActiveModal] = useState<null | "missionComplete" | "worldComplete" | "gameComplete">(null);
-  const [modalData, setModalData] = useState<{
-    missionComplete?: {
-      energyEarned: number;
-      xpEarned: number;
-      skill: string;
-      currentRank: string;
-      rankUp: boolean;
-      newRank?: string;
-    };
-    worldComplete?: {
-      worldId: number;
-      title: string;
-      energyEarned: number;
-      xpEarned: number;
-      currentRank: string;
-      particles: Array<{ id: number; x: number; y: number; size: number; delay: number }>;
-    };
-  }>({});
+  const [consecutiveWrongAnswers, setConsecutiveWrongAnswers] = useState(0);
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+  const [showFinalRestoreScreen, setShowFinalRestoreScreen] = useState(false);
+  const [modalData, setModalData] = useState<ModalData>({});
+  const [selectedWorldId, setSelectedWorldId] = useState(1);
 
-  const currentMission = missions[missionIndex];
-  const currentWorldId = currentMission.worldId;
+  const currentMission = getCurrentMission(completed);
+  const activeWorldId = getActiveWorldId(completed);
+  const currentRank = useMemo(() => getRankForXp(xp), [xp]);
   const progress = Math.round((completed.length / missions.length) * 100);
   const xpProgress = Math.round(((xp % LEVEL_XP) / LEVEL_XP) * 100);
   const xpFill = xp > 0 ? Math.max(6, xpProgress) : 0;
-  const highestUnlockedMissionId = Math.min(missions.length, completed.length + 1);
-  const currentRank = useMemo(() => getRankForXp(xp), [xp]);
 
-  const rank = currentRank;
-
-  const worldProgress = worlds.map((world, index) => {
-    const worldMissions = missions.filter((mission) => mission.worldId === world.id);
-    const worldCompleted = worldMissions.filter((mission) => completed.includes(mission.id)).length;
-    const percent = Math.round((worldCompleted / worldMissions.length) * 100);
-    const unlocked = index === 0 || (index > 0 && worldProgressCanUnlock(index));
+  const worldProgress = worlds.map((world) => {
+    const worldMissions = getWorldMissions(world.id);
+    const completedCount = worldMissions.filter((mission) => completed.includes(mission.id)).length;
+    const percent = Math.round((completedCount / worldMissions.length) * 100);
+    const restored = isWorldComplete(world.id, completed);
+    const unlocked = world.id === 1 || isWorldComplete(world.id - 1, completed);
+    const active = activeWorldId === world.id && !restored;
 
     return {
       ...world,
       missions: worldMissions,
-      completedCount: worldCompleted,
+      completedCount,
       percent,
+      restored,
       unlocked,
+      active,
     };
   });
 
   function getMissionStatus(mission: Mission): "complete" | "current" | "unlocked" | "locked" {
     if (completed.includes(mission.id)) return "complete";
-    if (mission.id === currentMission.id) return "current";
+    if (currentMission?.id === mission.id) return "current";
 
-    const worldIndex = worlds.findIndex((world) => world.id === mission.worldId);
-    const worldUnlocked = worldIndex === 0 || worldProgressCanUnlock(worldIndex);
-    const reached = mission.id <= highestUnlockedMissionId;
+    const world = worldProgress.find((item) => item.id === mission.worldId);
+    if (world?.unlocked && mission.worldId === activeWorldId) return "unlocked";
 
-    if (worldUnlocked && reached) return "unlocked";
     return "locked";
-  }
-
-  function worldProgressCanUnlock(worldIndex: number) {
-    const previousWorld = worlds[worldIndex - 1];
-    const previousWorldMissions = missions.filter((mission) => mission.worldId === previousWorld.id);
-    return previousWorldMissions.every((mission) => completed.includes(mission.id));
   }
 
   function focusWorld(worldId: number, unlocked: boolean) {
@@ -320,188 +349,143 @@ export default function AusumQuestPrototype() {
     setSelectedWorldId(worldId);
   }
 
-  function createCelebrationParticles() {
-    return Array.from({ length: 14 }, () => ({
-      id: Math.random(),
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: 6 + Math.random() * 8,
-      delay: Math.random() * 0.8,
-    }));
-  }
-
-  function generateParticles() {
-    const newParticles = Array.from({ length: 8 }, () => ({
-      id: Math.random(),
-      x: Math.random() * 160 - 80,
-      y: Math.random() * 160 - 80,
-    }));
-    setParticles(newParticles);
-    setShowParticles(true);
-    setTimeout(() => setShowParticles(false), 650);
-  }
-
-  function getNextWorldId(worldId: number) {
-    const currentIndex = worlds.findIndex((world) => world.id === worldId);
-    return worlds[currentIndex + 1]?.id ?? null;
-  }
-
-  function playCompletionSoundPlaceholder(worldTitle: string) {
-    console.log(`[AUSUM Quest] completion sound placeholder: ${worldTitle}`);
-  }
-
   function chooseAnswer(choice: string) {
+    if (!currentMission || activeModal !== null) return;
+
     setSelected(choice);
+
     if (choice === currentMission.answer) {
+      const previousRank = getRankForXp(xp);
       const newEnergy = energy + currentMission.reward;
       const newXp = xp + currentMission.xpReward;
+      const newRank = getRankForXp(newXp);
       const newLevel = Math.floor(newXp / LEVEL_XP) + 1;
       const newStreak = streak + 1;
-      const currentWorldMissions = missions.filter((mission) => mission.worldId === currentMission.worldId);
-      const worldCompletedNow = currentWorldMissions.every(
-        (mission) => mission.id === currentMission.id || completed.includes(mission.id)
-      );
+      const newCompleted = [...new Set([...completed, currentMission.id])];
+      const completedThisWorld = isWorldComplete(currentMission.worldId, newCompleted);
 
       setEnergy(newEnergy);
       setXp(newXp);
       setLevel(newLevel);
       setStreak(newStreak);
+      setPendingCompletedMission(currentMission);
       setConsecutiveWrongAnswers(0);
       setWrongChoice(null);
       setFlashAnswerArea(false);
-      setCompleted((prev) => [...new Set([...prev, currentMission.id])]);
-      generateParticles();
 
       let successMessage = companionMessages.correct;
       if (newStreak === 2) successMessage = "Great momentum. Keep the streak going.";
       if (newStreak === 3) successMessage = "Excellent streak. You are focused and steady.";
       if (newStreak >= 4) successMessage = "Legend streak. Your focus is outstanding.";
-
       setMessage(successMessage);
-      
-      const previousRank = getRankForXp(xp);
-      const newRankAfterMission = getRankForXp(newXp);
-      const rankUp = newRankAfterMission !== previousRank || completed.length === 0;
-      
-      if (worldCompletedNow) {
-        // Show world completion first
-        const particlesForCelebration = createCelebrationParticles();
-        setModalData({
-          worldComplete: {
-            worldId: currentMission.worldId,
-            title: getWorldTitle(currentMission.worldId),
-            energyEarned: currentMission.reward,
-            xpEarned: currentMission.xpReward,
-            currentRank: newRankAfterMission,
-            particles: particlesForCelebration,
-          },
-        });
-        setActiveModal("worldComplete");
-        playCompletionSoundPlaceholder(getWorldTitle(currentMission.worldId));
-      } else {
-        // Show mission completion
-        setModalData({
-          missionComplete: {
-            energyEarned: currentMission.reward,
-            xpEarned: currentMission.xpReward,
-            skill: currentMission.skill,
-            currentRank: newRankAfterMission,
-            rankUp: rankUp,
-            newRank: rankUp ? newRankAfterMission : undefined,
-          },
-        });
-        setActiveModal("missionComplete");
-      }
-    } else {
-      const energyPenalty = 2;
-      setEnergy((prev) => Math.max(0, prev - energyPenalty));
-      setWrongChoice(choice);
-      setFlashAnswerArea(true);
 
-      setTimeout(() => {
-        setSelected(null);
-        setWrongChoice(null);
-        setFlashAnswerArea(false);
-      }, 350);
-
-      setConsecutiveWrongAnswers((prev) => {
-        const updated = prev + 1;
-        if (updated >= 2) {
-          setStreak(0);
-          setMessage("You are still in this. Reset, refocus, and try again.");
-          return 0;
-        }
-        setMessage("Nice effort. Small energy dip only. Try again right away.");
-        return updated;
+      setModalData({
+        mission: currentMission,
+        energyEarned: currentMission.reward,
+        xpEarned: currentMission.xpReward,
+        rank: newRank,
+        rankUp: previousRank !== newRank,
+        completedWorldId: completedThisWorld ? currentMission.worldId : undefined,
+        completedWorldTitle: completedThisWorld ? getWorldTitle(currentMission.worldId) : undefined,
       });
-    }
-  }
 
-  function continueAdventureFromCelebration() {
-    if (!modalData.worldComplete) return;
-
-    setSelected(null);
-    const nextWorldId = getNextWorldId(modalData.worldComplete.worldId);
-    const nextWorldStartMission = missions.find((mission) => mission.worldId === nextWorldId);
-    
-    if (!nextWorldStartMission && nextWorldId === null) {
-      setActiveModal("gameComplete");
-      setMessage("The Ausum Realm has been completely restored!");
+      setActiveModal("missionComplete");
       return;
     }
 
-    if (nextWorldStartMission) {
-      setMissionIndex(missions.findIndex((mission) => mission.id === nextWorldStartMission.id));
-      setSelectedWorldId(nextWorldId!);
-      setMessage(`Adventure continues in ${getWorldTitle(nextWorldId!)}.`);
-    }
+    setEnergy((prev) => Math.max(0, prev - 2));
+    setWrongChoice(choice);
+    setFlashAnswerArea(true);
+
+    setTimeout(() => {
+      setSelected(null);
+      setWrongChoice(null);
+      setFlashAnswerArea(false);
+    }, 350);
+
+    setConsecutiveWrongAnswers((prev) => {
+      const updated = prev + 1;
+      if (updated >= 2) {
+        setStreak(0);
+        setMessage("You are still in this. Reset, refocus, and try again.");
+        return 0;
+      }
+      setMessage("Nice effort. Small energy dip only. Try again right away.");
+      return updated;
+    });
   }
 
-  function nextMission() {
+  function continueMissionComplete() {
+    if (!pendingCompletedMission) return;
+
+    const newCompleted = [...new Set([...completed, pendingCompletedMission.id])];
+    const completedWorldId = modalData.completedWorldId;
+
     setSelected(null);
     setWrongChoice(null);
     setFlashAnswerArea(false);
-    setModalData({});
-    if (missionIndex < missions.length - 1) {
-      const nextIndex = missionIndex + 1;
-      setMissionIndex(nextIndex);
-      setSelectedWorldId(missions[nextIndex].worldId);
-      setMessage("New mission unlocked. Read the clue carefully.");
-    } else {
-      setMessage(companionMessages.complete);
-      setStreak(0);
+    setCompleted(newCompleted);
+    setPendingCompletedMission(null);
+
+    if (completedWorldId) {
+      setActiveModal("worldComplete");
+      return;
     }
+
+    setModalData({});
+    setActiveModal(null);
+
+    const nextMission = getCurrentMission(newCompleted);
+    if (nextMission) {
+      setSelectedWorldId(nextMission.worldId);
+      setMessage(`Adventure continues in ${getWorldTitle(nextMission.worldId)}.`);
+    } else {
+      setShowFinalRestoreScreen(true);
+      setMessage("Quest complete.");
+    }
+  }
+
+  function continueWorldComplete() {
+    setSelected(null);
+    setWrongChoice(null);
+    setFlashAnswerArea(false);
+
+    const nextMission = getCurrentMission(completed);
+
+    setModalData({});
+    setActiveModal(null);
+
+    if (nextMission) {
+      setSelectedWorldId(nextMission.worldId);
+      setShowFinalRestoreScreen(false);
+      setMessage(`Adventure continues in ${getWorldTitle(nextMission.worldId)}.`);
+      return;
+    }
+
+    setShowFinalRestoreScreen(true);
+    setMessage("Quest complete. The Ausum Realm has been restored.");
   }
 
   function restartQuest() {
-    setMissionIndex(0);
-    setSelectedWorldId(worlds[0].id);
     setEnergy(0);
     setXp(0);
     setLevel(1);
+    setMessage(companionMessages.start);
     setSelected(null);
     setCompleted([]);
+    setPendingCompletedMission(null);
     setStreak(0);
-    setConsecutiveWrongAnswers(0);
     setWrongChoice(null);
     setFlashAnswerArea(false);
-    setMessage(companionMessages.start);
-    setUnlockFlashWorldId(null);
+    setConsecutiveWrongAnswers(0);
     setActiveModal(null);
     setModalData({});
+    setShowFinalRestoreScreen(false);
+    setSelectedWorldId(1);
+    setShowFinalRestoreScreen(false);
   }
 
-  function worldStatusLabel(world: World) {
-    const worldMissions = missions.filter((mission) => mission.worldId === world.id);
-    const worldCompleted = worldMissions.every((mission) => completed.includes(mission.id));
-    const worldIndex = worlds.findIndex((candidate) => candidate.id === world.id);
-    const unlocked = worldIndex === 0 || worldProgressCanUnlock(worldIndex);
-
-    if (worldCompleted) return "Restored";
-    if (world.id === currentWorldId) return "Active";
-    if (unlocked) return "Unlocked";
-    return "Locked";
-  }
+  const gameComplete = currentMission === null && showFinalRestoreScreen;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white p-4 md:p-8 overflow-hidden relative">
@@ -519,177 +503,12 @@ export default function AusumQuestPrototype() {
       </div>
 
       <AnimatePresence>
-        {showParticles &&
-          particles.map((particle) => (
-            <motion.div
-              key={particle.id}
-              className="fixed left-1/2 top-[40%] w-3 h-3 bg-yellow-400 rounded-full pointer-events-none"
-              initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
-              animate={{ x: particle.x, y: particle.y, opacity: 0, scale: 0 }}
-              transition={{ duration: 0.65, ease: "easeOut" }}
-            />
-          ))}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {activeModal === "worldComplete" && modalData.worldComplete && (
-          <motion.div
-            className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className="absolute inset-0 overflow-hidden pointer-events-none max-w-6xl mx-auto">
-              {modalData.worldComplete!.particles.map((particle) => (
-                <motion.div
-                  key={particle.id}
-                  className="absolute rounded-full bg-cyan-300/80 shadow-[0_0_18px_rgba(34,211,238,0.6)]"
-                  style={{ left: `${particle.x}%`, top: `${particle.y}%`, width: particle.size, height: particle.size }}
-                  initial={{ opacity: 0, scale: 0.3, y: 0 }}
-                  animate={{ opacity: [0, 1, 0], scale: [0.3, 1.15, 0.6], y: [0, -30, -60] }}
-                  transition={{ duration: 2.2, delay: particle.delay, repeat: Infinity, repeatDelay: 0.2 }}
-                />
-              ))}
-            </div>
-
-            <motion.div
-              className="relative mx-auto w-full"
-              style={{ maxWidth: "min(94vw, 600px)" }}
-              initial={{ scale: 0.9, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.92, opacity: 0, y: 16 }}
-              transition={{ type: "spring", stiffness: 240, damping: 22 }}
-            >
-              <Card className="bg-gradient-to-br from-slate-950/95 via-slate-900/95 to-slate-800/95 border-cyan-500/40 rounded-3xl shadow-2xl overflow-hidden">
-                <CardContent className="p-8 md:p-10 grid gap-6 text-center">
-                  <motion.div
-                    className="w-20 h-20 mx-auto rounded-full bg-cyan-400/10 border border-cyan-300/50 flex items-center justify-center shadow-[0_0_30px_rgba(34,211,238,0.2)]"
-                    animate={{ boxShadow: ["0 0 0px rgba(34,211,238,0.1)", "0 0 24px rgba(34,211,238,0.38)", "0 0 0px rgba(34,211,238,0.1)"] }}
-                    transition={{ duration: 2.2, repeat: Infinity }}
-                  >
-                    <Trophy className="w-10 h-10 text-cyan-300" />
-                  </motion.div>
-
-                  <div className="grid gap-2">
-                    <h2 className="text-3xl md:text-5xl font-black tracking-tight text-cyan-300">
-                      {modalData.worldComplete!.title} Restored!
-                    </h2>
-                    <p className="text-slate-300 text-base md:text-lg">
-                      The world has been stabilized. New paths are now available in The Ausum Realm.
-                    </p>
-                  </div>
-
-                  <div className="grid sm:grid-cols-3 gap-3 text-left">
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
-                      <p className="text-slate-400 text-sm">XP Earned</p>
-                      <p className="text-2xl font-bold text-cyan-300">+{modalData.worldComplete!.xpEarned}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
-                      <p className="text-slate-400 text-sm">Energy Earned</p>
-                      <p className="text-2xl font-bold text-yellow-300">+{modalData.worldComplete!.energyEarned}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
-                      <p className="text-slate-400 text-sm">Rank</p>
-                      <p className="text-2xl font-bold text-purple-300">
-                        {modalData.worldComplete!.currentRank}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap justify-center gap-3">
-                    <Button
-                      onClick={() => {
-                        setActiveModal(null);
-                        setModalData({});
-                        continueAdventureFromCelebration();
-                      }}
-                      className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-cyan-500/40"
-                    >
-                      Continue Adventure
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {activeModal === "gameComplete" && (
-          <motion.div
-            className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              className="w-full max-w-3xl"
-              initial={{ scale: 0.92, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 220, damping: 22 }}
-            >
-              <Card className="bg-gradient-to-br from-slate-950/95 via-slate-900/95 to-slate-800/95 border-emerald-500/30 rounded-3xl shadow-2xl overflow-hidden">
-                <CardContent className="p-8 md:p-10 grid gap-6 text-center">
-                  <motion.div
-                    className="w-24 h-24 mx-auto rounded-full bg-emerald-400/10 border border-emerald-300/40 flex items-center justify-center shadow-[0_0_36px_rgba(16,185,129,0.2)]"
-                    animate={{ boxShadow: ["0 0 0px rgba(16,185,129,0.1)", "0 0 24px rgba(16,185,129,0.35)", "0 0 0px rgba(16,185,129,0.1)"] }}
-                    transition={{ duration: 2.2, repeat: Infinity }}
-                  >
-                    <Sparkles className="w-12 h-12 text-emerald-300" />
-                  </motion.div>
-
-                  <div className="grid gap-2">
-                    <h2 className="text-3xl md:text-5xl font-black tracking-tight text-emerald-300">
-                      The Ausum Realm Has Been Restored
-                    </h2>
-                    <p className="text-slate-300 text-base md:text-lg">
-                      You completed every world and brought the quest to a close.
-                    </p>
-                  </div>
-
-                  <div className="grid sm:grid-cols-4 gap-3 text-left">
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
-                      <p className="text-slate-400 text-sm">Total XP</p>
-                      <p className="text-2xl font-bold text-cyan-300">{xp}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
-                      <p className="text-slate-400 text-sm">Energy</p>
-                      <p className="text-2xl font-bold text-yellow-300">{energy}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
-                      <p className="text-slate-400 text-sm">Level</p>
-                      <p className="text-2xl font-bold text-cyan-300">{level}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-4">
-                      <p className="text-slate-400 text-sm">Streak</p>
-                      <p className="text-2xl font-bold text-orange-300">{streak}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap justify-center gap-3">
-                    <Button
-                      onClick={restartQuest}
-                      className="rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-emerald-500/35"
-                    >
-                      Restart Quest
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {activeModal === "missionComplete" && modalData.missionComplete && (
+        {activeModal === "missionComplete" && modalData.mission && (
           <motion.div
             className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.08 }}
           >
             <motion.div
               className="mx-auto"
@@ -700,39 +519,69 @@ export default function AusumQuestPrototype() {
             >
               <Card className="bg-gradient-to-br from-slate-900/95 to-slate-800/95 border-cyan-700/40 rounded-2xl shadow-2xl">
                 <CardContent className="p-7 md:p-8 grid gap-5">
-                  <motion.h3
-                    className="text-2xl md:text-3xl font-bold text-cyan-300"
-                    animate={{ scale: [1, 1.02, 1] }}
-                    transition={{ duration: 1.4, repeat: Infinity }}
-                  >
-                    Mission Complete
-                  </motion.h3>
+                  <h3 className="text-2xl md:text-3xl font-bold text-cyan-300">Mission Complete</h3>
+
                   <div className="grid gap-3 text-slate-100 text-base md:text-lg leading-relaxed">
                     <p>
-                      Energy earned: <span className="font-bold text-yellow-300">+{modalData.missionComplete.energyEarned}</span>
+                      Energy earned: <span className="font-bold text-yellow-300">+{modalData.energyEarned}</span>
                     </p>
                     <p>
-                      XP earned: <span className="font-bold text-cyan-300">+{modalData.missionComplete.xpEarned}</span>
+                      XP earned: <span className="font-bold text-cyan-300">+{modalData.xpEarned}</span>
                     </p>
                     <p>
-                      Skill practiced: <span className="font-bold text-emerald-300">{modalData.missionComplete.skill}</span>
+                      Skill practiced: <span className="font-bold text-emerald-300">{modalData.mission.skill}</span>
                     </p>
                     <p>
-                      Rank: <span className="font-bold text-purple-300">{modalData.missionComplete.rankUp ? `${modalData.missionComplete.newRank} ⬆️` : modalData.missionComplete.currentRank}</span>
+                      Rank: <span className="font-bold text-purple-300">{modalData.rankUp ? `Rank Up! ${modalData.rank}` : modalData.rank}</span>
+                    </p>
+                    <p className="rounded-2xl bg-slate-950/70 border border-slate-700 p-4 text-slate-200">
+                      {modalData.mission.explanation}
                     </p>
                   </div>
-                  <div>
-                    <Button
-                      onClick={() => {
-                        setActiveModal(null);
-                        setModalData({});
-                        nextMission();
-                      }}
-                      className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 shadow-lg shadow-cyan-500/40"
-                    >
-                      Continue
-                    </Button>
-                  </div>
+
+                  <Button
+                    onClick={continueMissionComplete}
+                    className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 shadow-lg shadow-cyan-500/40"
+                  >
+                    Continue
+                  </Button>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeModal === "worldComplete" && modalData.completedWorldTitle && (
+          <motion.div
+            className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="relative mx-auto w-full"
+              style={{ maxWidth: "min(94vw, 600px)" }}
+              initial={{ scale: 0.9, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 16 }}
+            >
+              <Card className="bg-gradient-to-br from-slate-950/95 via-slate-900/95 to-slate-800/95 border-cyan-500/40 rounded-3xl shadow-2xl overflow-hidden">
+                <CardContent className="p-8 md:p-10 grid gap-6 text-center">
+                  <Trophy className="w-16 h-16 text-cyan-300 mx-auto" />
+                  <h2 className="text-3xl md:text-5xl font-black tracking-tight text-cyan-300">
+                    {modalData.completedWorldTitle} Restored!
+                  </h2>
+                  <p className="text-slate-300 text-base md:text-lg">
+                    A new path has opened in The Ausum Realm.
+                  </p>
+                  <Button
+                    onClick={continueWorldComplete}
+                    className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-cyan-500/40"
+                  >
+                    Continue Adventure
+                  </Button>
                 </CardContent>
               </Card>
             </motion.div>
@@ -741,92 +590,27 @@ export default function AusumQuestPrototype() {
       </AnimatePresence>
 
       <div className="max-w-6xl mx-auto grid gap-6 relative z-10">
-        <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-3">
-          <div className="flex items-center gap-3">
-            <motion.div
-              className="p-3 rounded-2xl bg-indigo-500/20 shadow-lg shadow-indigo-500/50"
-              animate={{ rotate: [0, 5, -5, 0] }}
-              transition={{ duration: 3, repeat: Infinity }}
-            >
-              <Sparkles className="w-8 h-8 text-indigo-400" />
-            </motion.div>
-            <div>
-              <h1 className="text-3xl md:text-5xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">
-                AUSUM Quest
-              </h1>
-              <p className="text-slate-300 text-base md:text-lg">
-                A thinking adventure built for challenge, confidence, and discovery.
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-indigo-500/20 shadow-lg shadow-indigo-500/50">
+            <Sparkles className="w-8 h-8 text-indigo-400" />
           </div>
-        </motion.div>
+          <div>
+            <h1 className="text-3xl md:text-5xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+              AUSUM Quest
+            </h1>
+            <p className="text-slate-300 text-base md:text-lg">
+              A thinking adventure built for challenge, confidence, and discovery.
+            </p>
+          </div>
+        </div>
 
-        <motion.div
-          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card className="bg-gradient-to-br from-yellow-900/40 to-yellow-900/20 border-yellow-700/50 rounded-2xl shadow-xl hover:shadow-yellow-500/20 transition-shadow">
-            <CardContent className="p-5 flex items-center gap-4">
-              <Zap className="w-8 h-8 text-yellow-300 flex-shrink-0" />
-              <div>
-                <p className="text-slate-400 text-sm">Energy</p>
-                <motion.p
-                  className="text-2xl font-bold text-yellow-300"
-                  key={energy}
-                  animate={{ scale: [1, 1.12, 1] }}
-                  transition={{ duration: 0.25 }}
-                >
-                  {energy}
-                </motion.p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-cyan-900/40 to-cyan-900/20 border-cyan-700/50 rounded-2xl shadow-xl hover:shadow-cyan-500/20 transition-shadow">
-            <CardContent className="p-5 flex items-center gap-4">
-              <Shield className="w-8 h-8 text-cyan-300 flex-shrink-0" />
-              <div>
-                <p className="text-slate-400 text-sm">Level</p>
-                <motion.p
-                  className="text-2xl font-bold text-cyan-300"
-                  key={level}
-                  animate={{ scale: [1, 1.12, 1] }}
-                  transition={{ duration: 0.25 }}
-                >
-                  {level}
-                </motion.p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-purple-900/40 to-purple-900/20 border-purple-700/50 rounded-2xl shadow-xl hover:shadow-purple-500/20 transition-shadow">
-            <CardContent className="p-5 flex items-center gap-4">
-              <Star className="w-8 h-8 text-purple-300 flex-shrink-0" />
-              <div>
-                <p className="text-slate-400 text-sm">Rank</p>
-                <p className="text-lg font-bold text-purple-300">{rank}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-sky-900/40 to-cyan-900/20 border-sky-700/50 rounded-2xl shadow-xl hover:shadow-cyan-500/20 transition-shadow">
-            <CardContent className="p-5 flex items-center gap-4">
-              <Trophy className="w-8 h-8 text-cyan-300 flex-shrink-0" />
-              <div className="w-full">
-                <p className="text-slate-400 text-sm">XP</p>
-                <p className="text-lg font-bold text-cyan-300">{xp}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-orange-900/40 to-red-900/20 border-orange-700/50 rounded-2xl shadow-xl hover:shadow-orange-500/20 transition-shadow h-full">
-            <CardContent className="p-5 flex items-center gap-4">
-              <Flame className={`w-8 h-8 text-orange-400 flex-shrink-0 ${streak > 0 ? "animate-bounce" : ""}`} />
-              <div>
-                <p className="text-slate-400 text-sm">Streak</p>
-                <p className="text-2xl font-bold text-orange-300">{streak}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          <StatCard icon={<Zap className="w-8 h-8 text-yellow-300" />} label="Energy" value={energy} color="text-yellow-300" />
+          <StatCard icon={<Shield className="w-8 h-8 text-cyan-300" />} label="Level" value={level} color="text-cyan-300" />
+          <StatCard icon={<Star className="w-8 h-8 text-purple-300" />} label="Rank" value={currentRank} color="text-purple-300" />
+          <StatCard icon={<Trophy className="w-8 h-8 text-cyan-300" />} label="XP" value={xp} color="text-cyan-300" />
+          <StatCard icon={<Flame className="w-8 h-8 text-orange-400" />} label="Streak" value={streak} color="text-orange-300" />
+        </div>
 
         <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden">
           <CardContent className="p-6 grid gap-4">
@@ -839,319 +623,250 @@ export default function AusumQuestPrototype() {
 
             <div className="h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50">
               <div
-                className="h-full bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-500 shadow-[0_0_12px_rgba(56,189,248,0.45)] transition-all duration-500 ease-out"
+                className="h-full bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-500 transition-all duration-500"
                 style={{ width: `${xpFill}%` }}
               />
             </div>
 
             <div className="grid md:grid-cols-3 gap-4">
-              {worldProgress.map((world, worldIndex) => (
+              {worldProgress.map((world) => (
                 <div
                   key={world.id}
                   role="button"
                   tabIndex={world.unlocked ? 0 : -1}
                   onClick={() => focusWorld(world.id, world.unlocked)}
-                  onKeyDown={(event) => {
-                    if (world.unlocked && (event.key === "Enter" || event.key === " ")) {
-                      event.preventDefault();
-                      focusWorld(world.id, world.unlocked);
-                    }
-                  }}
                   className={`rounded-2xl border p-4 transition-all ${
                     world.unlocked
                       ? "bg-slate-900/70 border-cyan-700/40 cursor-pointer"
                       : "bg-slate-900/30 border-slate-700/40 opacity-60"
                   } ${
-                    unlockFlashWorldId === world.id
-                      ? "ring-2 ring-cyan-300/80 shadow-[0_0_28px_rgba(34,211,238,0.3)]"
-                      : selectedWorldId === world.id || currentWorldId === world.id
+                    world.active || selectedWorldId === world.id
                       ? "ring-1 ring-cyan-400/60 shadow-[0_0_22px_rgba(34,211,238,0.16)]"
-                      : "hover:border-cyan-600/40"
+                      : ""
                   }`}
-                  aria-label={`${world.title} world`}
                 >
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <h4 className="text-lg font-bold text-white">{world.title}</h4>
-                    <span className={`text-xs font-semibold ${worldStatusLabel(world) === "Restored" ? "text-emerald-300" : world.unlocked ? "text-cyan-300" : "text-slate-500"}`}>
-                      {worldStatusLabel(world)}
+                    <span className={`text-xs font-semibold ${world.restored ? "text-emerald-300" : world.unlocked ? "text-cyan-300" : "text-slate-500"}`}>
+                      {world.restored ? "Restored" : world.active ? "Active" : world.unlocked ? "Unlocked" : "Locked"}
                     </span>
                   </div>
                   <p className="text-sm text-slate-300 mb-3">{world.description}</p>
                   <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-3 border border-slate-700/50">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400"
-                      animate={{ width: `${world.percent}%` }}
-                      transition={{ duration: 0.35 }}
-                    />
+                    <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400" style={{ width: `${world.percent}%` }} />
                   </div>
                   <p className="text-xs text-slate-400 mb-3">
                     Progress: {world.completedCount}/{world.missions.length}
                   </p>
-
                   <div className="flex items-center gap-2 flex-wrap">
-                    {world.missions.map((mission, missionNodeIndex) => {
-                      const isCompleted = completed.includes(mission.id);
-                      const isCurrent = currentMission.id === mission.id && !isCompleted;
-                      const isLocked = !world.unlocked || mission.id > highestUnlockedMissionId;
-                      const hasConnector = missionNodeIndex < world.missions.length - 1;
-                      const nextMission = world.missions[missionNodeIndex + 1];
-                      const nextCompleted = nextMission ? completed.includes(nextMission.id) : false;
-                      const connectorActive = isCompleted || nextCompleted;
-
+                    {world.missions.map((mission) => {
+                      const status = getMissionStatus(mission);
                       return (
-                        <div key={mission.id} className="flex items-center gap-2">
-                          <motion.div
-                            className={`w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
-                              isCompleted
-                                ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
-                                : isLocked
-                                ? "bg-slate-800/50 border-slate-700 text-slate-500"
-                                : "bg-cyan-500/15 border-cyan-400 text-cyan-200"
-                            }`}
-                            animate={
-                              isCurrent
-                                ? { boxShadow: ["0 0 0px #22d3ee", "0 0 14px #22d3ee", "0 0 0px #22d3ee"] }
-                                : {}
-                            }
-                            transition={{ duration: 1.2, repeat: isCurrent ? Infinity : 0 }}
-                          >
-                              {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : isLocked ? <Lock className="w-3 h-3" /> : mission.id}
-                          </motion.div>
-                          {hasConnector && (
-                            <motion.div
-                              className={`h-[2px] w-8 rounded-full ${
-                                connectorActive
-                                  ? "bg-gradient-to-r from-emerald-300/70 to-cyan-300/70"
-                                  : "bg-slate-700/70"
-                              }`}
-                              animate={connectorActive ? { opacity: [0.45, 0.85, 0.45] } : { opacity: 0.5 }}
-                              transition={{ duration: 1.6, repeat: Infinity }}
-                            />
-                          )}
+                        <div
+                          key={mission.id}
+                          className={`w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
+                            status === "complete"
+                              ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
+                              : status === "current"
+                              ? "bg-cyan-500/20 border-cyan-300 text-cyan-100"
+                              : status === "locked"
+                              ? "bg-slate-800/50 border-slate-700 text-slate-500"
+                              : "bg-slate-700/50 border-slate-500 text-slate-200"
+                          }`}
+                        >
+                          {status === "complete" ? <CheckCircle2 className="w-4 h-4" /> : status === "locked" ? <Lock className="w-3 h-3" /> : mission.id}
                         </div>
                       );
                     })}
                   </div>
-                  {worldIndex < worlds.length - 1 && <div className="mt-3 h-px bg-slate-700/50" />}
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-6">
-          <motion.div key={currentMission.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3 }}>
-            <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden hover:shadow-cyan-500/10 transition-shadow">
+        {gameComplete ? (
+          <Card className="bg-gradient-to-br from-slate-950/95 via-slate-900/95 to-slate-800/95 border-emerald-500/30 rounded-3xl shadow-2xl">
+            <CardContent className="p-8 md:p-10 grid gap-6 text-center">
+              <Sparkles className="w-20 h-20 text-emerald-300 mx-auto" />
+              <h2 className="text-3xl md:text-5xl font-black tracking-tight text-emerald-300">
+                The Ausum Realm Has Been Restored
+              </h2>
+              <p className="text-slate-300 text-base md:text-lg">
+                You completed every world and brought the quest to a close.
+              </p>
+              <Button
+                onClick={restartQuest}
+                className="rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-slate-950 font-bold text-lg min-h-14 px-6 mx-auto"
+              >
+                Restart Quest
+              </Button>
+            </CardContent>
+          </Card>
+        ) : currentMission ? (
+          <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-6">
+            <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden">
               <CardContent className="p-6 grid gap-5">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-cyan-300 font-semibold uppercase text-sm tracking-wider">{currentMission.type}</p>
                     <h2 className="text-2xl md:text-3xl font-bold text-white mt-1">{currentMission.title}</h2>
                   </div>
-                  <motion.div
-                    className="text-right text-sm text-slate-400 bg-slate-950/50 px-3 py-2 rounded-xl"
-                    animate={{ scale: [1, 1.05, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    Mission {missionIndex + 1} of {missions.length}
-                  </motion.div>
+                  <div className="text-right text-sm text-slate-400 bg-slate-950/50 px-3 py-2 rounded-xl">
+                    Mission {completed.length + 1} of {missions.length}
+                  </div>
                 </div>
 
-                <motion.div className="h-4 bg-slate-800 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-gradient-to-r from-cyan-400 to-blue-500"
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.5 }}
-                  />
-                </motion.div>
+                <div className="h-4 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-500" style={{ width: `${progress}%` }} />
+                </div>
 
-                <motion.div
-                  className="rounded-2xl bg-slate-950/80 p-5 border border-slate-700/50"
-                  animate={
-                    flashAnswerArea
-                      ? {
-                          borderColor: ["rgba(51,65,85,0.6)", "rgba(34,211,238,0.85)", "rgba(51,65,85,0.6)"],
-                          boxShadow: [
-                            "0 0 0px rgba(34,211,238,0)",
-                            "0 0 18px rgba(34,211,238,0.35)",
-                            "0 0 0px rgba(34,211,238,0)",
-                          ],
-                        }
-                      : { borderColor: "rgba(51,65,85,0.6)", boxShadow: "0 0 0px rgba(34,211,238,0)" }
-                  }
-                  transition={{ duration: 0.28 }}
+                <div
+                  className={`rounded-2xl bg-slate-950/80 p-5 border ${
+                    flashAnswerArea ? "border-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.35)]" : "border-slate-700/50"
+                  }`}
                 >
                   <div className="flex items-start gap-3">
                     <Brain className="w-6 h-6 text-cyan-300 mt-1 flex-shrink-0" />
                     <p className="text-lg leading-relaxed text-white">{currentMission.prompt}</p>
                   </div>
-                </motion.div>
+                </div>
 
                 <div className="grid sm:grid-cols-2 gap-3">
                   {currentMission.choices.map((choice) => {
-                    const isCorrect = selected !== null && choice === currentMission.answer;
+                    const isCorrect = selected === choice && choice === currentMission.answer;
                     const isWrong = wrongChoice === choice;
                     return (
-                      <motion.div key={choice} layout>
-                        <Button
-                          onClick={() => chooseAnswer(choice)}
-                          disabled={activeModal !== null}
-                          className={`min-h-16 rounded-2xl text-lg font-semibold justify-start px-5 w-full transition-all ${
-                            isCorrect
-                              ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/50"
-                              : isWrong
-                              ? "bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/50"
-                              : "bg-slate-700 hover:bg-slate-600 text-white"
-                          }`}
-                        >
-                          <motion.div
-                            animate={
-                              isCorrect
-                                ? { scale: [1, 1.05, 1] }
-                                : isWrong
-                                ? { x: [-4, 4, -3, 3, 0] }
-                                : {}
-                            }
-                            transition={{ duration: isWrong ? 0.26 : 0.3 }}
-                          >
-                            {choice}
-                          </motion.div>
-                        </Button>
-                      </motion.div>
+                      <Button
+                        key={choice}
+                        onClick={() => chooseAnswer(choice)}
+                        disabled={activeModal !== null}
+                        className={`min-h-16 rounded-2xl text-lg font-semibold justify-start px-5 w-full transition-all ${
+                          isCorrect
+                            ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                            : isWrong
+                            ? "bg-rose-500 hover:bg-rose-600 text-white"
+                            : "bg-slate-700 hover:bg-slate-600 text-white"
+                        }`}
+                      >
+                        {choice}
+                      </Button>
                     );
                   })}
                 </div>
 
-                <div className="flex flex-wrap gap-3 pt-4">
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Button
-                      onClick={nextMission}
-                      disabled={activeModal !== null}
-                      className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 px-6 shadow-lg shadow-cyan-500/50 disabled:opacity-45 disabled:cursor-not-allowed"
-                    >
-                      Next Mission
-                    </Button>
-                  </motion.div>
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Button
-                      onClick={restartQuest}
-                      variant="outline"
-                      className="rounded-2xl border-slate-500 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-400 font-bold text-lg min-h-14 px-6"
-                    >
-                      Restart Quest
-                    </Button>
-                  </motion.div>
+                <div className="pt-4">
+                  <Button
+                    onClick={restartQuest}
+                    variant="outline"
+                    className="rounded-2xl border-slate-500 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-400 font-bold text-lg min-h-14 px-6"
+                  >
+                    Restart Quest
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
 
-          <div className="grid gap-4">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-              <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl hover:shadow-indigo-500/10 transition-shadow">
+            <div className="grid gap-4">
+              <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl">
                 <CardContent className="p-6 grid gap-4">
                   <div className="flex items-center gap-3">
-                    <motion.div
-                      className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-400 to-indigo-500 flex items-center justify-center font-black text-2xl shadow-lg shadow-cyan-500/50"
-                      animate={{ rotate: [0, 5, -5, 0] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    >
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-400 to-indigo-500 flex items-center justify-center font-black text-2xl">
                       A
-                    </motion.div>
+                    </div>
                     <div>
                       <h3 className="text-xl font-bold text-white">Auri</h3>
                       <p className="text-slate-400 text-sm">Quest Companion</p>
                     </div>
                   </div>
-                  <motion.p
-                    className="text-lg text-slate-100 leading-relaxed bg-slate-950/80 p-4 rounded-2xl border border-slate-700/50"
-                    key={message}
-                    animate={{ opacity: [0.8, 1] }}
-                    transition={{ duration: 0.3 }}
-                  >
+                  <p className="text-lg text-slate-100 leading-relaxed bg-slate-950/80 p-4 rounded-2xl border border-slate-700/50">
                     {message}
-                  </motion.p>
+                  </p>
                 </CardContent>
               </Card>
-            </motion.div>
 
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
               <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl">
                 <CardContent className="p-6 grid gap-4">
                   <div className="flex items-center gap-2">
                     <Map className="w-6 h-6 text-cyan-300" />
                     <h3 className="text-xl font-bold text-white">Zone Progress</h3>
                   </div>
-                  <div className="grid gap-3">
+                  <div className="grid gap-3 max-h-[520px] overflow-y-auto pr-1">
                     {missions.map((mission) => {
                       const status = getMissionStatus(mission);
-                      const isComplete = status === "complete";
-                      const isCurrent = status === "current";
-                      const isUnlocked = status === "unlocked";
                       return (
-                        <motion.div
+                        <div
                           key={mission.id}
-                          layout
-                          className={`flex items-center justify-between gap-3 p-3 rounded-2xl transition-all ${
-                            isComplete
+                          className={`flex items-center justify-between gap-3 p-3 rounded-2xl ${
+                            status === "complete"
                               ? "bg-emerald-900/30 border border-emerald-700/50"
-                              : isCurrent
-                              ? "bg-cyan-900/25 border border-cyan-500/50 shadow-[0_0_18px_rgba(34,211,238,0.2)]"
-                              : isUnlocked
+                              : status === "current"
+                              ? "bg-cyan-900/25 border border-cyan-500/50"
+                              : status === "unlocked"
                               ? "bg-slate-900/80 border border-slate-600/60"
                               : "bg-slate-950/60 border border-slate-800/60 opacity-55"
                           }`}
-                          animate={isCurrent ? { boxShadow: ["0 0 0px rgba(34,211,238,0)", "0 0 20px rgba(34,211,238,0.22)", "0 0 0px rgba(34,211,238,0)"] } : {}}
-                          transition={{ duration: 1.4, repeat: isCurrent ? Infinity : 0 }}
                         >
                           <div>
                             <p className="font-semibold text-white">{mission.title}</p>
                             <p className="text-sm text-slate-400">{mission.skill}</p>
                           </div>
-                          <motion.span
+                          <span
                             className={`text-sm font-bold ${
-                              isComplete
+                              status === "complete"
                                 ? "text-emerald-300"
-                                : isCurrent
+                                : status === "current"
                                 ? "text-cyan-300"
-                                : isUnlocked
+                                : status === "unlocked"
                                 ? "text-slate-300"
                                 : "text-slate-500"
                             }`}
-                            animate={isComplete ? { scale: [1, 1.18, 1] } : isCurrent ? { scale: [1, 1.08, 1] } : {}}
-                            transition={{ duration: 0.35, repeat: isCurrent ? Infinity : 0, repeatDelay: 1.2 }}
                           >
-                            {isComplete ? (
-                              "Complete"
-                            ) : isCurrent ? (
-                              "Current"
-                            ) : isUnlocked ? (
-                              "Unlocked"
-                            ) : (
-                              <span className="flex items-center gap-1">
-                                <Lock className="w-4 h-4" /> Locked
-                              </span>
-                            )}
-                          </motion.span>
-                        </motion.div>
+                            {status === "complete" ? "Complete" : status === "current" ? "Current" : status === "unlocked" ? "Unlocked" : "Locked"}
+                          </span>
+                        </div>
                       );
                     })}
                   </div>
                 </CardContent>
               </Card>
-            </motion.div>
 
-            <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl">
-              <CardContent className="p-6 flex items-start gap-3">
-                <Volume2 className="w-6 h-6 text-cyan-300 mt-1 flex-shrink-0" />
-                <p className="text-slate-300 text-sm">
-                  Voice missions are represented in this prototype. The next build can add real speech recognition, spoken prompts, and pronunciation feedback.
-                </p>
-              </CardContent>
-            </Card>
+              <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-2xl">
+                <CardContent className="p-6 flex items-start gap-3">
+                  <Volume2 className="w-6 h-6 text-cyan-300 mt-1 flex-shrink-0" />
+                  <p className="text-slate-300 text-sm">
+                    Voice missions are represented in this prototype. The next build can add real speech recognition, spoken prompts, and pronunciation feedback.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string | number;
+  color: string;
+}) {
+  return (
+    <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700/50 rounded-2xl shadow-xl">
+      <CardContent className="p-5 flex items-center gap-4">
+        <div className="flex-shrink-0">{icon}</div>
+        <div>
+          <p className="text-slate-400 text-sm">{label}</p>
+          <p className={`text-lg md:text-2xl font-bold ${color}`}>{value}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
