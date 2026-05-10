@@ -696,23 +696,30 @@ export default function AusumQuestPrototype() {
                     </h2>
                   </div>
 
-                  <div className="grid gap-3 text-left max-w-2xl mx-auto min-h-[330px] md:min-h-[300px]">
+                  <div className="grid gap-3 max-w-2xl mx-auto min-h-[330px] md:min-h-[300px] place-items-center">
                     {introStoryLines.slice(0, visibleIntroLines).map((line, index) => {
                       const isNewest = index === visibleIntroLines - 1;
+                      const isFinalReveal = index === introStoryLines.length - 1;
+
                       return (
-                        <motion.p
+                        <motion.div
                           key={line}
-                          className={`rounded-2xl border p-3 md:p-4 leading-relaxed ${
-                            isNewest
-                              ? "bg-cyan-950/40 border-cyan-500/40 text-white shadow-[0_0_18px_rgba(34,211,238,0.12)]"
-                              : "bg-slate-950/50 border-slate-700/50 text-slate-300"
+                          className={`w-full max-w-xl rounded-2xl border px-4 py-3 md:px-5 md:py-4 text-center font-bold leading-relaxed tracking-wide ${
+                            isFinalReveal
+                              ? "bg-gradient-to-r from-cyan-500/20 via-indigo-500/20 to-purple-500/20 border-cyan-300/70 text-white text-xl md:text-2xl shadow-[0_0_28px_rgba(34,211,238,0.22)]"
+                              : isNewest
+                              ? "bg-cyan-950/50 border-cyan-400/60 text-cyan-50 text-base md:text-lg shadow-[0_0_20px_rgba(34,211,238,0.16)]"
+                              : "bg-slate-950/55 border-slate-700/60 text-slate-300 text-sm md:text-base opacity-80"
                           }`}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
+                          initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
                           transition={{ duration: 0.45 }}
                         >
-                          {line}
-                        </motion.p>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className={`h-2 w-2 rounded-full ${isFinalReveal ? "bg-cyan-200" : isNewest ? "bg-cyan-300" : "bg-slate-500"}`} />
+                            <span>{line}</span>
+                          </div>
+                        </motion.div>
                       );
                     })}
                   </div>
