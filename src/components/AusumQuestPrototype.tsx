@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,6 +54,19 @@ type ModalData = {
 };
 
 const LEVEL_XP = 100;
+
+const introStoryLines = [
+  "The Ausum Realm was once powered by crystal energy, clear thinking, and brave explorers.",
+  "But the worlds have become unstable.",
+  "Signal towers are fading.",
+  "Memory paths are breaking.",
+  "Shadow systems are spreading confusion.",
+  "Auri has been searching for someone with the focus and ability to restore balance.",
+  "That explorer is you.",
+];
+
+const introRevealSchedule = [0, 3000, 6000, 9000, 12000, 15000, 22000];
+const introButtonDelay = 26000;
 
 function playSound(enabled: boolean, type: SoundType) {
   if (!enabled) return;
@@ -348,6 +361,28 @@ export default function AusumQuestPrototype() {
   const [modalData, setModalData] = useState<ModalData>({});
   const [selectedWorldId, setSelectedWorldId] = useState(1);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showIntro, setShowIntro] = useState(true);
+  const [visibleIntroLines, setVisibleIntroLines] = useState(0);
+  const [introReady, setIntroReady] = useState(false);
+
+  useEffect(() => {
+    if (!showIntro) return;
+
+    const lineTimers = introRevealSchedule.map((delay, index) =>
+      window.setTimeout(() => {
+        setVisibleIntroLines(index + 1);
+      }, delay)
+    );
+
+    const buttonTimer = window.setTimeout(() => {
+      setIntroReady(true);
+    }, introButtonDelay);
+
+    return () => {
+      lineTimers.forEach((timer) => window.clearTimeout(timer));
+      window.clearTimeout(buttonTimer);
+    };
+  }, [showIntro]);
 
   const currentMission = getCurrentMission(completed);
   const activeWorldId = getActiveWorldId(completed);
@@ -606,6 +641,9 @@ export default function AusumQuestPrototype() {
     setModalData({});
     setShowFinalRestoreScreen(false);
     setSelectedWorldId(1);
+    setShowIntro(true);
+    setVisibleIntroLines(0);
+    setIntroReady(false);
   }
 
   const gameComplete = currentMission === null && showFinalRestoreScreen;
@@ -624,6 +662,88 @@ export default function AusumQuestPrototype() {
           transition={{ duration: 10, repeat: Infinity }}
         />
       </div>
+
+      <AnimatePresence>
+        {showIntro && (
+          <motion.div
+            className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="relative mx-auto w-full"
+              style={{ maxWidth: "min(94vw, 720px)" }}
+              initial={{ scale: 0.94, opacity: 0, y: 18 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 18 }}
+              transition={{ type: "spring", stiffness: 220, damping: 24 }}
+            >
+              <Card className="bg-gradient-to-br from-slate-950/95 via-slate-900/95 to-slate-800/95 border-cyan-500/40 rounded-3xl shadow-2xl overflow-hidden">
+                <CardContent className="p-7 md:p-10 grid gap-6 text-center">
+                  <motion.div
+                    className="w-20 h-20 mx-auto rounded-full bg-cyan-400/10 border border-cyan-300/50 flex items-center justify-center shadow-[0_0_30px_rgba(34,211,238,0.2)]"
+                    animate={{ boxShadow: ["0 0 0px rgba(34,211,238,0.1)", "0 0 26px rgba(34,211,238,0.36)", "0 0 0px rgba(34,211,238,0.1)"] }}
+                    transition={{ duration: 2.4, repeat: Infinity }}
+                  >
+                    <Sparkles className="w-10 h-10 text-cyan-300" />
+                  </motion.div>
+
+                  <div className="grid gap-2">
+                    <p className="text-cyan-300 font-semibold uppercase text-sm tracking-[0.24em]">Opening Transmission</p>
+                    <h2 className="text-3xl md:text-5xl font-black tracking-tight bg-gradient-to-r from-cyan-300 to-indigo-300 bg-clip-text text-transparent">
+                      THE AUSUM REALM
+                    </h2>
+                  </div>
+
+                  <div className="grid gap-3 text-left max-w-2xl mx-auto min-h-[330px] md:min-h-[300px]">
+                    {introStoryLines.slice(0, visibleIntroLines).map((line, index) => {
+                      const isNewest = index === visibleIntroLines - 1;
+                      return (
+                        <motion.p
+                          key={line}
+                          className={`rounded-2xl border p-3 md:p-4 leading-relaxed ${
+                            isNewest
+                              ? "bg-cyan-950/40 border-cyan-500/40 text-white shadow-[0_0_18px_rgba(34,211,238,0.12)]"
+                              : "bg-slate-950/50 border-slate-700/50 text-slate-300"
+                          }`}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.45 }}
+                        >
+                          {line}
+                        </motion.p>
+                      );
+                    })}
+                  </div>
+
+                  <div className="min-h-16 flex items-center justify-center">
+                    {introReady ? (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.92 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4 }}
+                      >
+                        <Button
+                          onClick={() => {
+                            setShowIntro(false);
+                            setMessage("The first gate is waiting.");
+                          }}
+                          className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-black text-xl min-h-16 px-10 shadow-lg shadow-cyan-500/40"
+                        >
+                          LET&apos;S GO
+                        </Button>
+                      </motion.div>
+                    ) : (
+                      <p className="text-slate-400 text-sm md:text-base">Auri is transmitting...</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {activeModal === "missionComplete" && modalData.mission && (
