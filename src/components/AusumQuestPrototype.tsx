@@ -14,6 +14,7 @@ import {
   Trophy,
   Lock,
   CheckCircle2,
+  LifeBuoy,
 } from "lucide-react";
 
 type Mission = {
@@ -37,6 +38,8 @@ type World = {
 };
 
 type ActiveModal = null | "missionComplete" | "worldComplete" | "incorrectAdvance";
+type MissionStatus = "mastered" | "completed" | "assisted" | "current" | "unlocked" | "locked";
+type SoundType = "correct" | "incorrect" | "worldComplete" | "gameComplete" | "rankUp";
 
 type ModalData = {
   mission?: Mission;
@@ -50,14 +53,15 @@ type ModalData = {
   correctAnswer?: string;
 };
 
-type SoundType = "correct" | "incorrect" | "worldComplete" | "gameComplete" | "rankUp";
-
 const LEVEL_XP = 100;
 
 function playSound(enabled: boolean, type: SoundType) {
   if (!enabled) return;
 
-  const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
   if (!AudioContextClass) return;
 
   const audioContext = new AudioContextClass();
@@ -187,7 +191,8 @@ const missions: Mission[] = [
     worldId: 2,
     title: "Decode the Signal",
     type: "Reading Mission",
-    prompt: "Choose the word that best completes the sentence: The explorer was brave because he kept going even when he felt __.",
+    prompt:
+      "Choose the word that best completes the sentence: The explorer was brave because he kept going even when he felt __.",
     choices: ["hungry", "sleepy", "quiet", "afraid"],
     answer: "afraid",
     reward: 25,
@@ -283,7 +288,6 @@ const missions: Mission[] = [
 const companionMessages = {
   start: "Welcome to AUSUM Quest. The Ausum Realm needs your thinking power.",
   correct: "Excellent! You powered the quest and earned rewards.",
-  incorrect: "Good try. Check the clue, slow down, and try again.",
 };
 
 function getRankForXp(xp: number) {
@@ -320,9 +324,7 @@ function getCurrentMission(completedIds: number[]) {
   if (activeWorldId === null) return null;
 
   return (
-    missions.find(
-      (mission) => mission.worldId === activeWorldId && !completedIds.includes(mission.id)
-    ) ?? null
+    missions.find((mission) => mission.worldId === activeWorldId && !completedIds.includes(mission.id)) ?? null
   );
 }
 
@@ -333,6 +335,9 @@ export default function AusumQuestPrototype() {
   const [message, setMessage] = useState(companionMessages.start);
   const [selected, setSelected] = useState<string | null>(null);
   const [completed, setCompleted] = useState<number[]>([]);
+  const [masteredCompleted, setMasteredCompleted] = useState<number[]>([]);
+  const [completedCorrect, setCompletedCorrect] = useState<number[]>([]);
+  const [assistedCompleted, setAssistedCompleted] = useState<number[]>([]);
   const [pendingCompletedMission, setPendingCompletedMission] = useState<Mission | null>(null);
   const [streak, setStreak] = useState(0);
   const [wrongChoice, setWrongChoice] = useState<string | null>(null);
@@ -354,6 +359,9 @@ export default function AusumQuestPrototype() {
   const worldProgress = worlds.map((world) => {
     const worldMissions = getWorldMissions(world.id);
     const completedCount = worldMissions.filter((mission) => completed.includes(mission.id)).length;
+    const masteredCount = worldMissions.filter((mission) => masteredCompleted.includes(mission.id)).length;
+    const completedCorrectCount = worldMissions.filter((mission) => completedCorrect.includes(mission.id)).length;
+    const assistedCount = worldMissions.filter((mission) => assistedCompleted.includes(mission.id)).length;
     const percent = Math.round((completedCount / worldMissions.length) * 100);
     const restored = isWorldComplete(world.id, completed);
     const unlocked = world.id === 1 || isWorldComplete(world.id - 1, completed);
@@ -363,6 +371,9 @@ export default function AusumQuestPrototype() {
       ...world,
       missions: worldMissions,
       completedCount,
+      masteredCount,
+      completedCorrectCount,
+      assistedCount,
       percent,
       restored,
       unlocked,
@@ -370,8 +381,10 @@ export default function AusumQuestPrototype() {
     };
   });
 
-  function getMissionStatus(mission: Mission): "complete" | "current" | "unlocked" | "locked" {
-    if (completed.includes(mission.id)) return "complete";
+  function getMissionStatus(mission: Mission): MissionStatus {
+    if (masteredCompleted.includes(mission.id)) return "mastered";
+    if (completedCorrect.includes(mission.id)) return "completed";
+    if (assistedCompleted.includes(mission.id)) return "assisted";
     if (currentMission?.id === mission.id) return "current";
 
     const world = worldProgress.find((item) => item.id === mission.worldId);
@@ -392,11 +405,14 @@ export default function AusumQuestPrototype() {
 
     if (choice === currentMission.answer) {
       const previousRank = getRankForXp(xp);
-      const newEnergy = energy + currentMission.reward;
-      const newXp = xp + currentMission.xpReward;
+      const isMastered = wrongAttempts === 0;
+      const earnedEnergy = isMastered ? currentMission.reward : Math.ceil(currentMission.reward / 2);
+      const earnedXp = isMastered ? currentMission.xpReward : Math.ceil(currentMission.xpReward / 2);
+      const newEnergy = energy + earnedEnergy;
+      const newXp = xp + earnedXp;
       const newRank = getRankForXp(newXp);
       const newLevel = Math.floor(newXp / LEVEL_XP) + 1;
-      const newStreak = streak + 1;
+      const newStreak = isMastered ? streak + 1 : 0;
       const newCompleted = [...new Set([...completed, currentMission.id])];
       const completedThisWorld = isWorldComplete(currentMission.worldId, newCompleted);
 
@@ -418,8 +434,8 @@ export default function AusumQuestPrototype() {
 
       setModalData({
         mission: currentMission,
-        energyEarned: currentMission.reward,
-        xpEarned: currentMission.xpReward,
+        energyEarned: earnedEnergy,
+        xpEarned: earnedXp,
         rank: newRank,
         rankUp: previousRank !== newRank,
         completedWorldId: completedThisWorld ? currentMission.worldId : undefined,
@@ -452,7 +468,6 @@ export default function AusumQuestPrototype() {
         correctAnswer: currentMission.answer,
       });
       setActiveModal("incorrectAdvance");
-
       return;
     }
 
@@ -469,12 +484,23 @@ export default function AusumQuestPrototype() {
     if (!pendingCompletedMission) return;
 
     const newCompleted = [...new Set([...completed, pendingCompletedMission.id])];
+    const wasMastered = modalData.energyEarned === pendingCompletedMission.reward && modalData.xpEarned === pendingCompletedMission.xpReward;
+    const newMasteredCompleted = wasMastered
+      ? [...new Set([...masteredCompleted, pendingCompletedMission.id])]
+      : masteredCompleted.filter((id) => id !== pendingCompletedMission.id);
+    const newCompletedCorrect = wasMastered
+      ? completedCorrect.filter((id) => id !== pendingCompletedMission.id)
+      : [...new Set([...completedCorrect, pendingCompletedMission.id])];
+    const newAssistedCompleted = assistedCompleted.filter((id) => id !== pendingCompletedMission.id);
     const completedWorldId = modalData.completedWorldId;
 
     setSelected(null);
     setWrongChoice(null);
     setFlashAnswerArea(false);
     setCompleted(newCompleted);
+    setMasteredCompleted(newMasteredCompleted);
+    setCompletedCorrect(newCompletedCorrect);
+    setAssistedCompleted(newAssistedCompleted);
     setPendingCompletedMission(null);
 
     if (completedWorldId) {
@@ -500,6 +526,9 @@ export default function AusumQuestPrototype() {
     if (!modalData.mission) return;
 
     const newCompleted = [...new Set([...completed, modalData.mission.id])];
+    const newAssistedCompleted = [...new Set([...assistedCompleted, modalData.mission.id])];
+    const newMasteredCompleted = masteredCompleted.filter((id) => id !== modalData.mission?.id);
+    const newCompletedCorrect = completedCorrect.filter((id) => id !== modalData.mission?.id);
     const completedWorldId = isWorldComplete(modalData.mission.worldId, newCompleted)
       ? modalData.mission.worldId
       : undefined;
@@ -509,11 +538,15 @@ export default function AusumQuestPrototype() {
     setWrongChoice(null);
     setFlashAnswerArea(false);
     setCompleted(newCompleted);
+    setAssistedCompleted(newAssistedCompleted);
+    setMasteredCompleted(newMasteredCompleted);
+    setCompletedCorrect(newCompletedCorrect);
     setPendingCompletedMission(null);
     setWrongAttempts(0);
     setStreak(0);
 
     if (completedWorldId) {
+      playSound(soundEnabled, "worldComplete");
       setModalData({ completedWorldId, completedWorldTitle });
       setActiveModal("worldComplete");
       return;
@@ -561,6 +594,9 @@ export default function AusumQuestPrototype() {
     setMessage(companionMessages.start);
     setSelected(null);
     setCompleted([]);
+    setMasteredCompleted([]);
+    setCompletedCorrect([]);
+    setAssistedCompleted([]);
     setPendingCompletedMission(null);
     setStreak(0);
     setWrongChoice(null);
@@ -570,7 +606,6 @@ export default function AusumQuestPrototype() {
     setModalData({});
     setShowFinalRestoreScreen(false);
     setSelectedWorldId(1);
-    setShowFinalRestoreScreen(false);
   }
 
   const gameComplete = currentMission === null && showFinalRestoreScreen;
@@ -607,9 +642,21 @@ export default function AusumQuestPrototype() {
             >
               <Card className="bg-gradient-to-br from-slate-900/95 to-slate-800/95 border-cyan-700/40 rounded-2xl shadow-2xl">
                 <CardContent className="p-7 md:p-8 grid gap-5">
-                  <h3 className="text-2xl md:text-3xl font-bold text-cyan-300">Mission Complete</h3>
+                  <h3 className="text-2xl md:text-3xl font-bold text-cyan-300">
+                    {modalData.energyEarned === modalData.mission.reward && modalData.xpEarned === modalData.mission.xpReward
+                      ? "Mission Mastered"
+                      : "Mission Completed"}
+                  </h3>
 
                   <div className="grid gap-3 text-slate-100 text-base md:text-lg leading-relaxed">
+                    <p>
+                      Completion:{" "}
+                      {modalData.energyEarned === modalData.mission.reward && modalData.xpEarned === modalData.mission.xpReward ? (
+                        <span className="font-bold text-emerald-300">Mastered</span>
+                      ) : (
+                        <span className="font-bold text-cyan-300">Completed</span>
+                      )}
+                    </p>
                     <p>
                       Energy earned: <span className="font-bold text-yellow-300">+{modalData.energyEarned}</span>
                     </p>
@@ -620,7 +667,10 @@ export default function AusumQuestPrototype() {
                       Skill practiced: <span className="font-bold text-emerald-300">{modalData.mission.skill}</span>
                     </p>
                     <p>
-                      Rank: <span className="font-bold text-purple-300">{modalData.rankUp ? `Rank Up! ${modalData.rank}` : modalData.rank}</span>
+                      Rank:{" "}
+                      <span className="font-bold text-purple-300">
+                        {modalData.rankUp ? `Rank Up! ${modalData.rank}` : modalData.rank}
+                      </span>
                     </p>
                     <p className="rounded-2xl bg-slate-950/70 border border-slate-700 p-4 text-slate-200">
                       {modalData.mission.explanation}
@@ -655,13 +705,16 @@ export default function AusumQuestPrototype() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 16 }}
             >
-              <Card className="bg-gradient-to-br from-slate-900/95 to-slate-800/95 border-rose-700/40 rounded-2xl shadow-2xl">
+              <Card className="bg-gradient-to-br from-slate-900/95 to-slate-800/95 border-amber-600/40 rounded-2xl shadow-2xl">
                 <CardContent className="p-7 md:p-8 grid gap-5">
-                  <h3 className="text-2xl md:text-3xl font-bold text-rose-300">Not Quite</h3>
+                  <h3 className="text-2xl md:text-3xl font-bold text-amber-300">Not Quite</h3>
 
                   <div className="grid gap-3 text-slate-100 text-base md:text-lg leading-relaxed">
                     <p>
-                      That answer was incorrect. Let's try the next mission.
+                      That answer was incorrect. This mission will be marked as assisted, and we’ll keep moving forward.
+                    </p>
+                    <p>
+                      Completion: <span className="font-bold text-amber-300">Assisted</span>
                     </p>
                     <p>
                       Energy earned: <span className="font-bold text-yellow-300">+0</span>
@@ -687,7 +740,7 @@ export default function AusumQuestPrototype() {
                     onClick={continueIncorrectAdvance}
                     className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-950 font-bold text-lg min-h-14 shadow-lg shadow-cyan-500/40"
                   >
-                    Try Next Mission
+                    Continue to Next Mission
                   </Button>
                 </CardContent>
               </Card>
@@ -809,8 +862,11 @@ export default function AusumQuestPrototype() {
                   <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-3 border border-slate-700/50">
                     <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400" style={{ width: `${world.percent}%` }} />
                   </div>
-                  <p className="text-xs text-slate-400 mb-3">
+                  <p className="text-xs text-slate-400 mb-1">
                     Progress: {world.completedCount}/{world.missions.length}
+                  </p>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Mastered: {world.masteredCount} • Completed: {world.completedCorrectCount} • Assisted: {world.assistedCount}
                   </p>
                   <div className="flex items-center gap-2 flex-wrap">
                     {world.missions.map((mission) => {
@@ -818,9 +874,14 @@ export default function AusumQuestPrototype() {
                       return (
                         <div
                           key={mission.id}
+                          title={status}
                           className={`w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
-                            status === "complete"
+                            status === "mastered"
                               ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
+                              : status === "completed"
+                              ? "bg-cyan-500/20 border-cyan-400 text-cyan-200"
+                              : status === "assisted"
+                              ? "bg-amber-500/20 border-amber-400 text-amber-200"
                               : status === "current"
                               ? "bg-cyan-500/20 border-cyan-300 text-cyan-100"
                               : status === "locked"
@@ -828,7 +889,17 @@ export default function AusumQuestPrototype() {
                               : "bg-slate-700/50 border-slate-500 text-slate-200"
                           }`}
                         >
-                          {status === "complete" ? <CheckCircle2 className="w-4 h-4" /> : status === "locked" ? <Lock className="w-3 h-3" /> : mission.id}
+                          {status === "mastered" ? (
+                            <CheckCircle2 className="w-4 h-4" />
+                          ) : status === "completed" ? (
+                            <Shield className="w-4 h-4" />
+                          ) : status === "assisted" ? (
+                            <LifeBuoy className="w-4 h-4" />
+                          ) : status === "locked" ? (
+                            <Lock className="w-3 h-3" />
+                          ) : (
+                            mission.id
+                          )}
                         </div>
                       );
                     })}
@@ -849,6 +920,20 @@ export default function AusumQuestPrototype() {
               <p className="text-slate-300 text-base md:text-lg">
                 You completed every world and brought the quest to a close.
               </p>
+              <div className="grid sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
+                <div className="rounded-2xl bg-slate-950/70 border border-emerald-700/40 p-4">
+                  <p className="text-slate-400 text-sm">Mastered Missions</p>
+                  <p className="text-2xl font-bold text-emerald-300">{masteredCompleted.length}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-950/70 border border-amber-700/40 p-4">
+                  <p className="text-slate-400 text-sm">Completed Missions</p>
+                  <p className="text-2xl font-bold text-cyan-300">{completedCorrect.length}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-950/70 border border-amber-700/40 p-4">
+                  <p className="text-slate-400 text-sm">Assisted Missions</p>
+                  <p className="text-2xl font-bold text-amber-300">{assistedCompleted.length}</p>
+                </div>
+              </div>
               <Button
                 onClick={restartQuest}
                 className="rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-slate-950 font-bold text-lg min-h-14 px-6 mx-auto"
@@ -952,8 +1037,12 @@ export default function AusumQuestPrototype() {
                         <div
                           key={mission.id}
                           className={`flex items-center justify-between gap-3 p-3 rounded-2xl ${
-                            status === "complete"
+                            status === "mastered"
                               ? "bg-emerald-900/30 border border-emerald-700/50"
+                              : status === "completed"
+                              ? "bg-cyan-900/25 border border-cyan-600/50"
+                              : status === "assisted"
+                              ? "bg-amber-900/25 border border-amber-600/50"
                               : status === "current"
                               ? "bg-cyan-900/25 border border-cyan-500/50"
                               : status === "unlocked"
@@ -967,8 +1056,12 @@ export default function AusumQuestPrototype() {
                           </div>
                           <span
                             className={`text-sm font-bold ${
-                              status === "complete"
+                              status === "mastered"
                                 ? "text-emerald-300"
+                                : status === "completed"
+                                ? "text-cyan-300"
+                                : status === "assisted"
+                                ? "text-amber-300"
                                 : status === "current"
                                 ? "text-cyan-300"
                                 : status === "unlocked"
@@ -976,7 +1069,17 @@ export default function AusumQuestPrototype() {
                                 : "text-slate-500"
                             }`}
                           >
-                            {status === "complete" ? "Complete" : status === "current" ? "Current" : status === "unlocked" ? "Unlocked" : "Locked"}
+                            {status === "mastered"
+                              ? "Mastered"
+                              : status === "completed"
+                              ? "Completed"
+                              : status === "assisted"
+                              ? "Assisted"
+                              : status === "current"
+                              ? "Current"
+                              : status === "unlocked"
+                              ? "Unlocked"
+                              : "Locked"}
                           </span>
                         </div>
                       );
